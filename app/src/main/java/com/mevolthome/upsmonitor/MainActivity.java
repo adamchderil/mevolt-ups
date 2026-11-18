@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.res.ColorStateList;
 import android.content.Intent;
+import android.graphics.Insets;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -25,6 +26,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.animation.LinearInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
@@ -226,6 +228,28 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BACKGROUND);
         root.setPadding(dp(16), dp(10), dp(16), dp(8));
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int left;
+            int top;
+            int right;
+            int bottom;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets systemInsets = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                left = systemInsets.left;
+                top = systemInsets.top;
+                right = systemInsets.right;
+                bottom = systemInsets.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(dp(16) + left, dp(10) + top,
+                    dp(16) + right, dp(8) + bottom);
+            return insets;
+        });
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
@@ -1225,16 +1249,38 @@ public class MainActivity extends Activity {
 
         TextView stateTitle = text("Состояния", 17, ELECTRIC_TEXT, true);
         addTopMargin(body, stateTitle, 18);
-        LinearLayout stateRow = new LinearLayout(this);
-        stateRow.setOrientation(LinearLayout.HORIZONTAL);
-        stateRow.addView(stateCard("Режим AVR", "—", "⌁"), weightedParams(1, 1));
-        stateRow.addView(stateCard("Источник питания", "—", "ϟ"), weightedParams(1, 1));
-        stateRow.addView(stateCard("ИБП", "—", "◈"), weightedParams(1, 1));
-        avrStatus = (TextView) ((LinearLayout) stateRow.getChildAt(0)).getChildAt(1);
-        utilityStatus = (TextView) ((LinearLayout) stateRow.getChildAt(1))
-                .getChildAt(1);
-        upsStatus = (TextView) ((LinearLayout) stateRow.getChildAt(2)).getChildAt(1);
-        body.addView(stateRow);
+        String[][] stateSpecs = {
+                {"Режим AVR", "—", "⌁"},
+                {"Источник питания", "—", "ϟ"},
+                {"ИБП", "—", "◈"}
+        };
+        TextView[] stateValues = new TextView[stateSpecs.length];
+        int stateColumns = AdaptiveLayoutMath.stateColumnCount(
+                getResources().getConfiguration().screenWidthDp,
+                getResources().getConfiguration().fontScale);
+        for (int start = 0; start < stateSpecs.length; start += stateColumns) {
+            LinearLayout stateRow = new LinearLayout(this);
+            stateRow.setOrientation(LinearLayout.HORIZONTAL);
+            int end = Math.min(start + stateColumns, stateSpecs.length);
+            for (int index = start; index < end; index++) {
+                String[] spec = stateSpecs[index];
+                LinearLayout stateCard = stateCard(spec[0], spec[1], spec[2]);
+                stateValues[index] = (TextView) stateCard.getChildAt(1);
+                stateRow.addView(stateCard, weightedParams(1, 2));
+            }
+            if (end - start < stateColumns) {
+                stateRow.addView(new View(this), weightedParams(1, 2));
+            }
+            LinearLayout.LayoutParams stateRowParams =
+                    new LinearLayout.LayoutParams(-1, -2);
+            if (start > 0) {
+                stateRowParams.topMargin = dp(6);
+            }
+            body.addView(stateRow, stateRowParams);
+        }
+        avrStatus = stateValues[0];
+        utilityStatus = stateValues[1];
+        upsStatus = stateValues[2];
 
         TextView info = text(
                 "Сервер передаёт заряд батареи, но не отдельный флаг её исправности. Неизвестные коды состояния отображаются без догадок.",
@@ -1673,7 +1719,6 @@ public class MainActivity extends Activity {
         labelRow.addView(electricIcon(spec.icon, spec.color, 13),
                 new LinearLayout.LayoutParams(dp(18), dp(18)));
         TextView label = text(spec.label, 11, ELECTRIC_MUTED, false);
-        label.setSingleLine(true);
         labelRow.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
         return labelRow;
     }
@@ -1688,7 +1733,6 @@ public class MainActivity extends Activity {
         labelRow.addView(electricIcon(iconGlyph, ELECTRIC_TEAL, 11),
                 new LinearLayout.LayoutParams(dp(15), dp(16)));
         TextView labelView = text(label, 9, ELECTRIC_MUTED, false);
-        labelView.setSingleLine(true);
         labelRow.addView(labelView, new LinearLayout.LayoutParams(0, -2, 1f));
         card.addView(labelRow);
         TextView valueView = text(value, 11, ELECTRIC_TEXT, true);
