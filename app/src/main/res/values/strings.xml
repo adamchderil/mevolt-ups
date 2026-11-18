@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">MeVolt UPS Monitor</string>
+    <string name="connection_instructions">Укажите IPv4-адрес компьютера с UPSMON PRO. Телефон и ПК должны быть в одной Wi-Fi сети.</string>
+    <string name="host_hint">IP компьютера, например 192.168.1.20</string>
+    <string name="default_port">8000</string>
+    <string name="connect">Подключить</string>
+    <string name="enter_server_address">Введите адрес ПК и порт веб-сервера UPSMON PRO (обычно 8000).</string>
+    <string name="external_link_blocked">Заблокирована ссылка за пределы сервера UPSMON PRO.</string>
+    <string name="connecting">Подключение к UPSMON PRO…</string>
+    <string name="page_loaded">Страница загружена. Войдите в UPSMON PRO, если появится запрос.</string>
+    <string name="connection_failed">Не удалось загрузить страницу. Проверьте IP, порт и Wi-Fi.</string>
+    <string name="invalid_host">Введите локальный IPv4-адрес частной сети</string>
+    <string name="private_addresses_only">Поддерживаются адреса 10.x.x.x, 172.16–31.x.x и 192.168.x.x.</string>
+    <string name="invalid_port">Укажите порт от 1 до 65535</string>
+</resources>

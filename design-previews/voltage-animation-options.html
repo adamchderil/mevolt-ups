@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MeVolt UPS — варианты индикации напряжения</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --navy: #132a45;
+      --blue: #2470be;
+      --teal: #199b97;
+      --ink: #1f2d3d;
+      --muted: #687789;
+      --page: #eaf0f6;
+      --line: #e1e8f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 34px;
+      background:
+        radial-gradient(circle at 50% 0, #f8fbff 0, transparent 46%),
+        var(--page);
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    .page { max-width: 1320px; margin: 0 auto; }
+
+    .intro {
+      margin: 0 auto 28px;
+      text-align: center;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 9px 0 7px;
+      color: var(--navy);
+      font-size: clamp(25px, 3vw, 36px);
+    }
+
+    .intro p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      align-items: start;
+    }
+
+    .option {
+      overflow: hidden;
+      border: 1px solid #dce5ef;
+      border-radius: 25px;
+      background: rgba(255,255,255,.72);
+      box-shadow: 0 18px 48px rgba(19,42,69,.09);
+    }
+
+    .option-head {
+      min-height: 92px;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .option-head span {
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .option-head h2 {
+      margin: 5px 0 3px;
+      color: var(--navy);
+      font-size: 21px;
+    }
+
+    .option-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .phone-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 20px 14px 22px;
+    }
+
+    .phone {
+      width: min(100%, 360px);
+      padding: 8px;
+      border: 1px solid #b8c5d3;
+      border-radius: 38px;
+      background: #17283b;
+      box-shadow: 0 14px 32px rgba(19,42,69,.19);
+    }
+
+    .screen {
+      overflow: hidden;
+      min-height: 622px;
+      padding: 12px 14px 15px;
+      border-radius: 30px;
+      background: #f3f6fa;
+    }
+
+    .theme-electric {
+      position: relative;
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse at 50% 40%, rgba(12,75,105,.27), transparent 58%),
+        linear-gradient(160deg, #081321, #0b1422 55%, #07101c);
+      color: #e7f6ff;
+    }
+
+    .theme-electric::before {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-image: linear-gradient(rgba(99,196,231,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,196,231,.025) 1px, transparent 1px);
+      background-size: 24px 24px;
+      content: "";
+      mask-image: linear-gradient(to bottom, black, transparent 85%);
+    }
+
+    .theme-electric > *:not(.bolt-layer) { position: relative; z-index: 1; }
+
+    .bolt-layer {
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .bolt {
+      position: absolute;
+      left: -12%;
+      color: #69eaff;
+      opacity: 0;
+      filter: drop-shadow(0 0 9px rgba(67,221,255,.95));
+      mix-blend-mode: screen;
+      animation: flyBolt 7s linear infinite;
+    }
+
+    .bolt svg { display: block; width: 22px; height: 28px; fill: currentColor; }
+    .bolt-two { top: 38%; animation-delay: -2.7s; animation-duration: 8s; color: #53cfff; }
+    .bolt-three { top: 68%; animation-delay: -5.2s; animation-duration: 9s; color: #6affdb; }
+    .bolt-one { top: 20%; }
+
+    @keyframes flyBolt {
+      0% { transform: translate(-18px, 22px) rotate(-12deg) scale(.65); opacity: 0; }
+      10% { opacity: .82; }
+      70% { opacity: .64; }
+      100% { transform: translate(390px, -38px) rotate(18deg) scale(1.05); opacity: 0; }
+    }
+
+    .statusbar {
+      display: flex;
+      justify-content: space-between;
+      padding: 1px 5px 9px;
+      color: #536477;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 3px 2px 12px;
+    }
+
+    .brand {
+      color: var(--navy);
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: -.03em;
+    }
+
+    .connected {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #27835f;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #38ad7c;
+      box-shadow: 0 0 9px rgba(56,173,124,.65);
+    }
+
+    .battery {
+      position: relative;
+      overflow: hidden;
+      padding: 13px 15px 12px;
+      border-radius: 18px;
+      background: linear-gradient(120deg, #132a45, #174c68);
+      color: white;
+    }
+
+    .battery-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .battery-label { color: #d3e2ef; font-size: 11px; }
+    .battery-value { font-size: 25px; font-weight: 800; }
+
+    .battery-track {
+      height: 5px;
+      margin-top: 9px;
+      overflow: hidden;
+      border-radius: 10px;
+      background: rgba(255,255,255,.2);
+    }
+
+    .battery-track::after {
+      display: block;
+      width: 76%;
+      height: 100%;
+      border-radius: inherit;
+      background: #34b9ae;
+    }
+
+    .updated { margin-top: 6px; color: #b7cde0; font-size: 9px; }
+
+    .section-title {
+      margin: 15px 2px 8px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .voltage-row, .secondary-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+    }
+
+    .meter-card, .small-card, .state-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+      box-shadow: 0 5px 15px rgba(31,45,61,.035);
+    }
+
+    .meter-card { min-width: 0; padding: 11px 10px 10px; }
+    .meter-label { color: var(--muted); font-size: 10px; font-weight: 600; }
+    .meter-value { margin-top: 2px; color: var(--ink); font-size: 23px; font-weight: 800; }
+    .meter-value small { color: var(--muted); font-size: 11px; font-weight: 600; }
+
+    .wave-box {
+      position: relative;
+      height: 48px;
+      margin-top: 4px;
+      border-radius: 9px;
+      background: linear-gradient(180deg, rgba(36,112,190,.09), rgba(36,112,190,.015));
+    }
+
+    .wave-box.teal {
+      background: linear-gradient(180deg, rgba(25,155,151,.1), rgba(25,155,151,.015));
+    }
+
+    .wave-box svg { width: 100%; height: 100%; overflow: visible; }
+    .wave-base { fill: none; stroke: #d9e3ed; stroke-width: 1; }
+    .wave-line {
+      fill: none;
+      stroke: var(--blue);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 8 5;
+      animation: flow 1.5s linear infinite;
+    }
+
+    .teal .wave-line { stroke: var(--teal); animation-duration: 1.8s; }
+    .wave-glow { fill: none; stroke: currentColor; stroke-width: 8; opacity: .09; }
+    .wave-box:not(.teal) { color: var(--blue); }
+    .wave-box.teal { color: var(--teal); }
+
+    @keyframes flow { to { stroke-dashoffset: -39; } }
+
+    .pulse {
+      position: absolute;
+      top: 21px;
+      left: 10%;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 10px 3px rgba(36,112,190,.3);
+      animation: pulseFlow 2.4s ease-in-out infinite;
+    }
+
+    .teal .pulse {
+      background: var(--teal);
+      box-shadow: 0 0 10px 3px rgba(25,155,151,.32);
+      animation-delay: .6s;
+    }
+
+    @keyframes pulseFlow {
+      0% { left: 8%; opacity: 0; transform: scale(.65); }
+      15%, 80% { opacity: 1; }
+      100% { left: 88%; opacity: 0; transform: scale(1.25); }
+    }
+
+    .gauge {
+      display: block;
+      width: 100%;
+      height: 77px;
+      margin-top: 1px;
+      overflow: visible;
+    }
+
+    .gauge-track {
+      fill: none;
+      stroke: #e2e8ef;
+      stroke-width: 8;
+      stroke-linecap: round;
+    }
+
+    .gauge-active {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-dasharray: 175;
+      stroke-dashoffset: 42;
+      filter: drop-shadow(0 1px 4px currentColor);
+    }
+
+    .blue-stroke { stroke: var(--blue); color: var(--blue); }
+    .teal-stroke { stroke: var(--teal); color: var(--teal); }
+
+    .needle {
+      transform-box: view-box;
+      transform-origin: 80px 82px;
+      will-change: transform;
+      animation: needleDrift 5.8s cubic-bezier(.45, 0, .55, 1) infinite alternate;
+    }
+
+    .teal-needle { animation-delay: .45s; }
+    @keyframes needleDrift {
+      0%, 100% { transform: rotate(46.5deg); }
+      50% { transform: rotate(48deg); }
+    }
+
+    .needle line { stroke-width: 3; stroke-linecap: round; }
+    .needle circle { stroke: white; stroke-width: 2; }
+
+    .gauge-scale {
+      display: flex;
+      justify-content: space-between;
+      margin: -2px 4px 0;
+      color: #95a3b3;
+      font-size: 8px;
+    }
+
+    .small-card { padding: 10px 11px; }
+    .small-label { color: var(--muted); font-size: 9px; }
+    .small-value { margin-top: 4px; color: var(--ink); font-size: 17px; font-weight: 800; }
+    .small-value small { color: var(--muted); font-size: 10px; font-weight: 600; }
+    .secondary-row.triple { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .secondary-row.triple .small-card { padding: 9px 7px; }
+    .secondary-row.triple .small-label { font-size: 8px; }
+    .secondary-row.triple .small-value { font-size: 15px; }
+
+    .states {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-top: 9px;
+    }
+
+    .state-card { padding: 9px 7px; }
+    .state-label { color: var(--muted); font-size: 8px; }
+    .state-value { margin-top: 4px; color: var(--ink); font-size: 10px; font-weight: 700; }
+
+    .footnote {
+      margin: 12px 2px 0;
+      color: #8391a1;
+      font-size: 9px;
+      line-height: 1.35;
+    }
+
+    .choice-note {
+      padding: 0 22px 19px;
+      color: #56677a;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .choice-note strong { color: var(--navy); }
+
+    .theme-electric .statusbar { color: #92a8bc; }
+    .theme-electric .brand {
+      color: #eefaff;
+      text-shadow: 0 0 16px rgba(82,208,255,.26);
+    }
+    .theme-electric .connected { color: #78ebc5; }
+    .theme-electric .battery {
+      border: 1px solid rgba(88,209,255,.24);
+      background: linear-gradient(120deg, #10243a, #103c52 62%, #102d45);
+      box-shadow: inset 0 0 24px rgba(42,180,224,.08), 0 0 20px rgba(22,155,210,.08);
+    }
+    .theme-electric .battery-value { color: #e7fcff; }
+    .theme-electric .battery-track { background: rgba(224,246,255,.14); }
+    .theme-electric .battery-track::after {
+      background: linear-gradient(90deg, #27a9d8, #54efc7, #27a9d8);
+      background-size: 200% 100%;
+      animation: chargeFlow 3.8s ease-in-out infinite;
+    }
+    @keyframes chargeFlow {
+      0%, 100% { background-position: 0 0; }
+      50% { background-position: 100% 0; }
+    }
+    .theme-electric .section-title { color: #e2f1fc; }
+    .theme-electric .meter-card,
+    .theme-electric .small-card,
+    .theme-electric .state-card {
+      border-color: rgba(117,165,197,.19);
+      background: linear-gradient(145deg, rgba(17,34,52,.96), rgba(11,24,39,.98));
+      box-shadow: inset 0 1px rgba(255,255,255,.025), 0 8px 18px rgba(0,0,0,.14);
+    }
+    .theme-electric .meter-label,
+    .theme-electric .small-label,
+    .theme-electric .state-label { color: #91a9bf; }
+    .theme-electric .meter-value,
+    .theme-electric .small-value,
+    .theme-electric .state-value { color: #e9f8ff; }
+    .theme-electric .meter-value small,
+    .theme-electric .small-value small { color: #91a9bf; }
+    .theme-electric .gauge-track { stroke: rgba(142,180,207,.2); }
+    .theme-electric .gauge-active { animation: arcGlow 4.4s ease-in-out infinite; }
+    .theme-electric .teal-stroke { stroke: #42e1cf; color: #42e1cf; }
+    .theme-electric .blue-stroke { stroke: #58bbff; color: #58bbff; }
+    .theme-electric .needle circle { stroke: #10243a; }
+    .theme-electric .gauge-scale { color: #7892a9; }
+    .theme-electric .footnote { color: #7890a5; }
+    .theme-electric .dot { animation: statusPulse 2.8s ease-in-out infinite; }
+    .theme-electric .reading {
+      animation: readingGlow 3.4s ease-in-out infinite;
+    }
+    .theme-electric .reading-delay-1 { animation-delay: .35s; }
+    .theme-electric .reading-delay-2 { animation-delay: .7s; }
+    .theme-electric .reading-delay-3 { animation-delay: 1.05s; }
+    .theme-electric .reading-delay-4 { animation-delay: 1.4s; }
+    .theme-electric .electric-icon {
+      display: inline-flex;
+      width: 16px;
+      height: 16px;
+      align-items: center;
+      justify-content: center;
+      margin-right: 4px;
+      border-radius: 5px;
+      background: rgba(82,202,255,.1);
+      color: #75ddff;
+      font-size: 12px;
+      text-shadow: 0 0 8px rgba(82,202,255,.65);
+      animation: iconFloat 3s ease-in-out infinite;
+    }
+    .theme-electric .electric-icon.teal-icon {
+      background: rgba(66,225,207,.1);
+      color: #59ead5;
+      animation-delay: .5s;
+    }
+    .theme-electric .secondary-icon {
+      display: inline-block;
+      width: 13px;
+      color: #5fdfff;
+      font-size: 12px;
+      text-shadow: 0 0 8px rgba(82,202,255,.45);
+      animation: iconFloat 2.7s ease-in-out infinite;
+    }
+    .theme-electric .state-icon {
+      display: inline-block;
+      color: #56ddcb;
+      animation: iconFloat 2.5s ease-in-out infinite;
+    }
+    @keyframes arcGlow {
+      0%, 100% { opacity: .88; filter: drop-shadow(0 0 3px currentColor); }
+      50% { opacity: 1; filter: drop-shadow(0 0 7px currentColor); }
+    }
+    @keyframes readingGlow {
+      0%, 100% { filter: brightness(1); text-shadow: 0 0 0 transparent; }
+      50% { filter: brightness(1.12); text-shadow: 0 0 12px rgba(77,211,255,.24); }
+    }
+    @keyframes statusPulse {
+      0%, 100% { box-shadow: 0 0 5px rgba(56,173,124,.35); }
+      50% { box-shadow: 0 0 12px rgba(56,173,124,.9); }
+    }
+    @keyframes iconFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+
+    @media (max-width: 900px) {
+      body { padding: 20px 12px; }
+      .options { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <div class="eyebrow">MeVolt UPS · визуальные макеты</div>
+      <h1>Как показывать напряжение?</h1>
+      <p>Два варианта карточек входного и выходного напряжения. Это только превью, приложение не меняется.</p>
+    </header>
+
+    <section class="options" aria-label="Варианты анимации показателей напряжения">
+      <article class="option">
+        <header class="option-head">
+          <span>Вариант A</span>
+          <h2>Энергопоток</h2>
+          <p>Синусоида и световой импульс движутся вдоль показания.</p>
+        </header>
+        <div class="phone-wrap">
+          <div class="phone">
+            <div class="screen">
+              <div class="statusbar"><span>9:41</span><span>●●●　Wi-Fi　▰</span></div>
+              <div class="toolbar">
+                <div class="brand">MeVolt UPS</div>
+                <div class="connected"><i class="dot"></i> Онлайн</div>
+              </div>
+              <section class="battery">
+                <div class="battery-row">
+                  <div class="battery-label">Заряд батареи</div>
+                  <div class="battery-value">96%</div>
+                </div>
+                <div class="battery-track"></div>
+                <div class="updated">Данные UPSMON PRO · обновлено сейчас</div>
+              </section>
+              <div class="section-title">Показатели</div>
+              <div class="voltage-row">
+                <section class="meter-card">
+                  <div class="meter-label">Входное напряжение</div>
+                  <div class="meter-value">230 <small>В</small></div>
+                  <div class="wave-box">
+                    <svg viewBox="0 0 160 48" aria-hidden="true">
+                      <path class="wave-base" d="M0 24H160"></path>
+                      <path class="wave-glow" d="M0 24 C12 0 27 0 40 24 S68 48 80 24 S108 0 120 24 S148 48 160 24"></path>
+                      <path class="wave-line" d="M0 24 C12 0 27 0 40 24 S68 48 80 24 S108 0 120 24 S148 48 160 24"></path>
+                    </svg>
+                    <i class="pulse"></i>
+                  </div>
+                </section>
+                <section class="meter-card">
+                  <div class="meter-label">Выходное напряжение</div>
+                  <div class="meter-value">229 <small>В</small></div>
+                  <div class="wave-box teal">
+                    <svg viewBox="0 0 160 48" aria-hidden="true">
+                      <path class="wave-base" d="M0 24H160"></path>
+                      <path class="wave-glow" d="M0 24 C12 0 27 0 40 24 S68 48 80 24 S108 0 120 24 S148 48 160 24"></path>
+                      <path class="wave-line" d="M0 24 C12 0 27 0 40 24 S68 48 80 24 S108 0 120 24 S148 48 160 24"></path>
+                    </svg>
+                    <i class="pulse"></i>
+                  </div>
+                </section>
+              </div>
+              <div class="section-title">Остальные показатели</div>
+              <div class="secondary-row">
+                <div class="small-card"><div class="small-label">Нагрузка</div><div class="small-value">42<small>%</small></div></div>
+                <div class="small-card"><div class="small-label">Частота входа</div><div class="small-value">50<small> Гц</small></div></div>
+              </div>
+              <div class="states">
+                <div class="state-card"><div class="state-label">Режим AVR</div><div class="state-value">Норма</div></div>
+                <div class="state-card"><div class="state-label">Питание</div><div class="state-value">Сеть</div></div>
+                <div class="state-card"><div class="state-label">ИБП</div><div class="state-value">Норма</div></div>
+              </div>
+              <div class="footnote">Волна и импульс подчёркивают обновление данных, но не заменяют числовое значение.</div>
+            </div>
+          </div>
+        </div>
+        <div class="choice-note"><strong>Впечатление:</strong> современно и динамично; акцент на непрерывном потоке энергии.</div>
+      </article>
+
+      <article class="option">
+        <header class="option-head">
+          <span>Вариант B</span>
+          <h2>Двойные приборы</h2>
+          <p>Тёмная электрическая тема, плавные стрелки и неоновые акценты.</p>
+        </header>
+        <div class="phone-wrap">
+          <div class="phone">
+            <div class="screen theme-electric">
+              <div class="bolt-layer" aria-hidden="true">
+                <span class="bolt bolt-one"><svg viewBox="0 0 32 32"><path d="M19 1 6 18h8l-1 13 14-19h-9z"></path></svg></span>
+                <span class="bolt bolt-two"><svg viewBox="0 0 32 32"><path d="M19 1 6 18h8l-1 13 14-19h-9z"></path></svg></span>
+                <span class="bolt bolt-three"><svg viewBox="0 0 32 32"><path d="M19 1 6 18h8l-1 13 14-19h-9z"></path></svg></span>
+              </div>
+              <div class="statusbar"><span>9:41</span><span>●●●　Wi-Fi　▰</span></div>
+              <div class="toolbar">
+                <div class="brand">MeVolt UPS</div>
+                <div class="connected"><i class="dot"></i> Онлайн</div>
+              </div>
+              <section class="battery">
+                <div class="battery-row">
+                  <div class="battery-label"><span class="electric-icon">ϟ</span>Заряд батареи</div>
+                  <div class="battery-value reading reading-delay-1">96%</div>
+                </div>
+                <div class="battery-track"></div>
+                <div class="updated">Данные UPSMON PRO · обновлено сейчас</div>
+              </section>
+              <div class="section-title">Показатели</div>
+              <div class="voltage-row">
+                <section class="meter-card">
+                  <div class="meter-label"><span class="electric-icon">ϟ</span>Входное напряжение</div>
+                  <svg class="gauge" viewBox="0 0 160 100" aria-label="Входное напряжение 230 вольт">
+                    <path class="gauge-track" d="M20 82 A60 60 0 0 1 140 82"></path>
+                    <path class="gauge-active blue-stroke" d="M20 82 A60 60 0 0 1 140 82"></path>
+                    <g class="needle">
+                      <line class="blue-stroke" x1="80" y1="82" x2="80" y2="35"></line>
+                      <circle cx="80" cy="82" r="5" fill="#2470be"></circle>
+                    </g>
+                  </svg>
+                  <div class="gauge-scale"><span>0</span><span>150</span><span>300</span></div>
+                  <div class="meter-value reading reading-delay-1">230 <small>В</small></div>
+                </section>
+                <section class="meter-card">
+                  <div class="meter-label"><span class="electric-icon teal-icon">ϟ</span>Выходное напряжение</div>
+                  <svg class="gauge" viewBox="0 0 160 100" aria-label="Выходное напряжение 229 вольт">
+                    <path class="gauge-track" d="M20 82 A60 60 0 0 1 140 82"></path>
+                    <path class="gauge-active teal-stroke" d="M20 82 A60 60 0 0 1 140 82"></path>
+                    <g class="needle teal-needle">
+                      <line class="teal-stroke" x1="80" y1="82" x2="80" y2="35"></line>
+                      <circle cx="80" cy="82" r="5" fill="#199b97"></circle>
+                    </g>
+                  </svg>
+                  <div class="gauge-scale"><span>0</span><span>150</span><span>300</span></div>
+                  <div class="meter-value reading reading-delay-2">229 <small>В</small></div>
+                </section>
+              </div>
+              <div class="section-title">Остальные показатели</div>
+              <div class="secondary-row triple">
+                <div class="small-card"><div class="small-label"><span class="secondary-icon">ϟ</span>Нагрузка</div><div class="small-value reading reading-delay-3">42<small>%</small></div></div>
+                <div class="small-card"><div class="small-label"><span class="secondary-icon">⌁</span>Вход, Гц</div><div class="small-value reading reading-delay-4">50</div></div>
+                <div class="small-card"><div class="small-label"><span class="secondary-icon">⌁</span>Выход, Гц</div><div class="small-value reading reading-delay-4">49</div></div>
+              </div>
+              <div class="states">
+                <div class="state-card"><div class="state-label"><span class="state-icon">⌁</span> Режим AVR</div><div class="state-value reading">Норма</div></div>
+                <div class="state-card"><div class="state-label"><span class="state-icon">ϟ</span> Питание</div><div class="state-value reading reading-delay-1">Сеть</div></div>
+                <div class="state-card"><div class="state-label"><span class="state-icon">◈</span> ИБП</div><div class="state-value reading reading-delay-2">Норма</div></div>
+              </div>
+              <div class="footnote">Стрелки двигаются очень плавно. Молнии и свечение ненавязчиво оживляют показатели.</div>
+            </div>
+          </div>
+        </div>
+        <div class="choice-note"><strong>Впечатление:</strong> тёмная электрическая панель; стрелки, показания и небольшие молнии двигаются мягко, не отвлекая от цифр.</div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
