@@ -1,5 +1,6 @@
 package com.mevolthome.upsmonitor;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -22,6 +23,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.animation.LinearInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
@@ -79,16 +81,32 @@ public class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(243, 246, 250);
     private static final int TEXT = Color.rgb(31, 45, 61);
     private static final int SECONDARY = Color.rgb(104, 119, 137);
+    private static final int ELECTRIC_BACKGROUND = Color.rgb(7, 16, 28);
+    private static final int ELECTRIC_SURFACE_TOP = Color.rgb(17, 34, 52);
+    private static final int ELECTRIC_SURFACE_BOTTOM = Color.rgb(11, 24, 39);
+    private static final int ELECTRIC_OUTLINE = Color.rgb(37, 68, 91);
+    private static final int ELECTRIC_TEXT = Color.rgb(233, 248, 255);
+    private static final int ELECTRIC_MUTED = Color.rgb(145, 169, 191);
+    private static final int ELECTRIC_BLUE = Color.rgb(88, 187, 255);
+    private static final int ELECTRIC_TEAL = Color.rgb(66, 225, 207);
+    private static final int ELECTRIC_GREEN = Color.rgb(120, 235, 197);
+    private static final int ELECTRIC_AMBER = Color.rgb(255, 194, 88);
+    private static final int ELECTRIC_RED = Color.rgb(255, 130, 130);
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ScheduledExecutorService networkExecutor =
             Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final List<MetricCard> metricCards = new ArrayList<>();
+    private final List<VoltageGaugeView> voltageGauges = new ArrayList<>();
+    private final List<View> animatedIcons = new ArrayList<>();
+    private final List<View> animatedReadings = new ArrayList<>();
 
     private FrameLayout appRoot;
     private FrameLayout contentFrame;
+    private LinearLayout shellRoot;
     private LinearLayout bottomNavigation;
+    private TextView toolbarTitle;
     private TextView connectionStatus;
     private TextView toolbarSubtitle;
     private TextView historyStatus;
@@ -106,10 +124,17 @@ public class MainActivity extends Activity {
     private EditText loginPasswordInput;
     private TextView loginStatus;
     private Button loginButton;
+    private Button refreshButton;
+    private Button settingsButton;
     private View loginOverlay;
+    private LightningOverlayView lightningOverlay;
+    private ValueAnimator dashboardAnimator;
+    private ValueAnimator batteryNumberAnimator;
+    private ValueAnimator batteryProgressAnimator;
     private String currentUsername;
     private char[] activePassword;
     private File pendingUpdateFile;
+    private double displayedBatteryPercent;
 
     private String connectedHost;
     private int connectedPort = DEFAULT_PORT;
@@ -122,6 +147,8 @@ public class MainActivity extends Activity {
     private boolean activityResumed;
     private boolean isAuthenticated;
     private boolean isAdminUser;
+    private boolean dashboardTheme;
+    private boolean hasBatteryValue;
     private int historyGeneration;
 
     @Override
@@ -160,18 +187,21 @@ public class MainActivity extends Activity {
                 .getBoolean(UpsPowerMonitorService.MONITOR_ENABLED_KEY, false)) {
             startBackgroundMonitor();
         }
+        startDashboardAnimations();
     }
 
     @Override
     protected void onPause() {
         activityResumed = false;
         stopPolling();
+        stopDashboardAnimations();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         stopPolling();
+        stopDashboardAnimations();
         networkExecutor.shutdownNow();
         updateExecutor.shutdownNow();
         if (activePassword != null) {
@@ -183,6 +213,7 @@ public class MainActivity extends Activity {
 
     private void buildShell() {
         LinearLayout root = new LinearLayout(this);
+        shellRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BACKGROUND);
         root.setPadding(dp(16), dp(10), dp(16), dp(8));
@@ -195,13 +226,13 @@ public class MainActivity extends Activity {
         titleGroup.setOrientation(LinearLayout.VERTICAL);
         titleGroup.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
 
-        TextView title = text("MeVolt UPS", 21, NAVY, true);
-        titleGroup.addView(title);
+        toolbarTitle = text("MeVolt UPS", 21, NAVY, true);
+        titleGroup.addView(toolbarTitle);
         toolbarSubtitle = text("Мониторинг UPSMON PRO", 12, SECONDARY, false);
         titleGroup.addView(toolbarSubtitle);
         toolbar.addView(titleGroup);
 
-        Button refreshButton = button("Обновить", BLUE);
+        refreshButton = button("Обновить", BLUE);
         refreshButton.setOnClickListener(view -> {
             if (showingHistory) {
                 fetchHistoryOnce();
@@ -211,7 +242,7 @@ public class MainActivity extends Activity {
         });
         toolbar.addView(refreshButton);
 
-        Button settingsButton = button("Настройки", NAVY);
+        settingsButton = button("Настройки", NAVY);
         LinearLayout.LayoutParams settingsParams =
                 new LinearLayout.LayoutParams(-2, dp(42));
         settingsParams.leftMargin = dp(6);
@@ -246,6 +277,215 @@ public class MainActivity extends Activity {
                     continueAfterSplash();
                 })
                 .start(), 3000);
+    }
+
+    private void setDashboardTheme(boolean enabled) {
+        if (dashboardTheme == enabled) {
+            if (enabled && connectionStatus != null
+                    && !animatedReadings.contains(connectionStatus)) {
+                animatedReadings.add(connectionStatus);
+            }
+            return;
+        }
+        if (!enabled) {
+            stopDashboardAnimations();
+            animatedIcons.clear();
+            animatedReadings.clear();
+            voltageGauges.clear();
+            lightningOverlay = null;
+        }
+        dashboardTheme = enabled;
+        int backgroundColor = enabled ? ELECTRIC_BACKGROUND : BACKGROUND;
+        if (shellRoot != null) {
+            shellRoot.setBackgroundColor(backgroundColor);
+        }
+        if (contentFrame != null) {
+            contentFrame.setBackgroundColor(backgroundColor);
+        }
+        if (toolbarTitle != null) {
+            toolbarTitle.setTextColor(enabled ? ELECTRIC_TEXT : NAVY);
+        }
+        if (toolbarSubtitle != null) {
+            toolbarSubtitle.setTextColor(enabled ? ELECTRIC_MUTED : SECONDARY);
+        }
+        if (connectionStatus != null) {
+            connectionStatus.setTextColor(enabled ? ELECTRIC_MUTED : SECONDARY);
+            if (enabled && !animatedReadings.contains(connectionStatus)) {
+                animatedReadings.add(connectionStatus);
+            }
+        }
+        if (refreshButton != null) {
+            refreshButton.setBackgroundTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_BLUE : BLUE));
+            refreshButton.setTextColor(Color.WHITE);
+        }
+        if (settingsButton != null) {
+            settingsButton.setBackgroundTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_SURFACE_TOP : NAVY));
+            settingsButton.setTextColor(enabled ? ELECTRIC_TEXT : Color.WHITE);
+        }
+        if (bottomNavigation != null) {
+            bottomNavigation.setBackgroundColor(enabled
+                    ? ELECTRIC_BACKGROUND : BACKGROUND);
+        }
+        getWindow().setStatusBarColor(enabled ? ELECTRIC_BACKGROUND : Color.WHITE);
+        getWindow().setNavigationBarColor(enabled ? ELECTRIC_BACKGROUND : Color.WHITE);
+        int systemUiVisibility = enabled ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        if (!enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            systemUiVisibility |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(systemUiVisibility);
+    }
+
+    private void startDashboardAnimations() {
+        if (!activityResumed || !dashboardTheme) {
+            return;
+        }
+        if (dashboardAnimator == null) {
+            dashboardAnimator = ValueAnimator.ofFloat(0f, 1f);
+            dashboardAnimator.setDuration(3400);
+            dashboardAnimator.setRepeatCount(ValueAnimator.INFINITE);
+            dashboardAnimator.setInterpolator(new LinearInterpolator());
+            dashboardAnimator.addUpdateListener(animator -> {
+                float phase = (float) animator.getAnimatedValue();
+                for (int index = 0; index < animatedIcons.size(); index++) {
+                    View icon = animatedIcons.get(index);
+                    double angle = (phase + index * 0.19f) * Math.PI * 2;
+                    float wave = (float) ((Math.sin(angle) + 1d) * 0.5d);
+                    icon.setTranslationY(-dp(2) * wave);
+                    icon.setAlpha(0.9f + 0.1f * wave);
+                }
+                for (int index = 0; index < animatedReadings.size(); index++) {
+                    View reading = animatedReadings.get(index);
+                    double angle = (phase + index * 0.13f) * Math.PI * 2;
+                    float wave = (float) ((Math.sin(angle) + 1d) * 0.5d);
+                    float scale = 1f + 0.008f * wave;
+                    reading.setScaleX(scale);
+                    reading.setScaleY(scale);
+                    reading.setAlpha(0.94f + 0.06f * wave);
+                }
+            });
+        }
+        if (!dashboardAnimator.isStarted()) {
+            dashboardAnimator.start();
+        }
+        if (lightningOverlay != null) {
+            lightningOverlay.startAnimation();
+        }
+        for (VoltageGaugeView gauge : voltageGauges) {
+            gauge.startAnimation();
+        }
+    }
+
+    private void stopDashboardAnimations() {
+        if (dashboardAnimator != null) {
+            dashboardAnimator.cancel();
+            dashboardAnimator = null;
+        }
+        if (batteryNumberAnimator != null) {
+            batteryNumberAnimator.cancel();
+            batteryNumberAnimator = null;
+        }
+        if (batteryProgressAnimator != null) {
+            batteryProgressAnimator.cancel();
+            batteryProgressAnimator = null;
+        }
+        for (MetricCard metric : metricCards) {
+            metric.cancelAnimations();
+        }
+        for (View icon : animatedIcons) {
+            icon.setTranslationY(0f);
+            icon.setAlpha(1f);
+        }
+        for (View reading : animatedReadings) {
+            reading.setScaleX(1f);
+            reading.setScaleY(1f);
+            reading.setAlpha(1f);
+        }
+        if (lightningOverlay != null) {
+            lightningOverlay.stopAnimation();
+        }
+        for (VoltageGaugeView gauge : voltageGauges) {
+            gauge.stopAnimation();
+        }
+    }
+
+    private TextView electricIcon(String symbol, int color, int sizeSp) {
+        TextView icon = text(symbol, sizeSp, color, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setShadowLayer(dp(5), 0, 0,
+                Color.argb(90, Color.red(color), Color.green(color), Color.blue(color)));
+        animatedIcons.add(icon);
+        return icon;
+    }
+
+    private GradientDrawable electricCardBackground() {
+        GradientDrawable background = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{ELECTRIC_SURFACE_TOP, ELECTRIC_SURFACE_BOTTOM});
+        background.setCornerRadius(dp(17));
+        background.setStroke(dp(1), ELECTRIC_OUTLINE);
+        return background;
+    }
+
+    private GradientDrawable electricBatteryBackground() {
+        GradientDrawable background = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{Color.rgb(16, 36, 58), Color.rgb(16, 60, 82),
+                        Color.rgb(16, 45, 69)});
+        background.setCornerRadius(dp(20));
+        background.setStroke(dp(1), Color.argb(75, 88, 209, 255));
+        return background;
+    }
+
+    private void animateBatteryValue(double target) {
+        if (batteryNumberAnimator != null) {
+            batteryNumberAnimator.cancel();
+            batteryNumberAnimator = null;
+        }
+        if (!hasBatteryValue || displayedBatteryPercent == target) {
+            batteryValue.setText(formatNumber(target) + "%");
+            displayedBatteryPercent = target;
+            hasBatteryValue = true;
+            return;
+        }
+        batteryNumberAnimator = ValueAnimator.ofFloat(
+                (float) displayedBatteryPercent, (float) target);
+        batteryNumberAnimator.setDuration(650);
+        batteryNumberAnimator.addUpdateListener(animator -> {
+            displayedBatteryPercent = (float) animator.getAnimatedValue();
+            batteryValue.setText(formatNumber(displayedBatteryPercent) + "%");
+        });
+        batteryNumberAnimator.start();
+    }
+
+    private void animateBatteryProgress(int target) {
+        if (batteryProgressAnimator != null) {
+            batteryProgressAnimator.cancel();
+        }
+        batteryProgressAnimator = ValueAnimator.ofInt(
+                batteryProgress.getProgress(), target);
+        batteryProgressAnimator.setDuration(650);
+        batteryProgressAnimator.addUpdateListener(animator ->
+                batteryProgress.setProgress((int) animator.getAnimatedValue()));
+        batteryProgressAnimator.start();
+    }
+
+    private void setAnimatedText(TextView view, String value) {
+        if (view == null || value.contentEquals(view.getText())) {
+            return;
+        }
+        view.animate().cancel();
+        view.setText(value);
+        view.setAlpha(0.72f);
+        view.animate().alpha(1f).setDuration(280).start();
+    }
+
+    private int connectionStatusColor(boolean connected) {
+        if (dashboardTheme) {
+            return connected ? ELECTRIC_GREEN : ELECTRIC_RED;
+        }
+        return connected ? GREEN : Color.rgb(184, 67, 67);
     }
 
     private void continueAfterSplash() {
@@ -329,7 +569,7 @@ public class MainActivity extends Activity {
                 if (authenticationResult == null) {
                     connectionStatus.setText("Нет связи с сервером авторизации"
                             + (authenticationError == null ? "." : " · " + authenticationError));
-                    connectionStatus.setTextColor(Color.rgb(184, 67, 67));
+                    connectionStatus.setTextColor(connectionStatusColor(false));
                     return;
                 }
                 if (!authenticationResult.accepted) {
@@ -845,6 +1085,7 @@ public class MainActivity extends Activity {
     }
 
     private void renderConnectionSetup() {
+        setDashboardTheme(false);
         showingHistory = false;
         showingControls = false;
         showingUsers = false;
@@ -896,6 +1137,11 @@ public class MainActivity extends Activity {
     }
 
     private void renderMonitor() {
+        stopDashboardAnimations();
+        animatedIcons.clear();
+        animatedReadings.clear();
+        voltageGauges.clear();
+        setDashboardTheme(true);
         showingControls = false;
         showingHistory = false;
         showingUsers = false;
@@ -903,11 +1149,13 @@ public class MainActivity extends Activity {
         bottomNavigation.setVisibility(View.VISIBLE);
         toolbarSubtitle.setText(connectedHost + " · HTTPS · UPSMON PRO");
         metricCards.clear();
+        hasBatteryValue = false;
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = pageBody();
 
-        LinearLayout batteryCard = card(NAVY, 20);
+        LinearLayout batteryCard = card(ELECTRIC_SURFACE_TOP, 20);
+        batteryCard.setBackground(electricBatteryBackground());
         LinearLayout batteryHeader = new LinearLayout(this);
         batteryHeader.setGravity(Gravity.CENTER_VERTICAL);
         batteryHeader.setOrientation(LinearLayout.HORIZONTAL);
@@ -915,65 +1163,78 @@ public class MainActivity extends Activity {
         LinearLayout batteryTitles = new LinearLayout(this);
         batteryTitles.setOrientation(LinearLayout.VERTICAL);
         batteryTitles.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        batteryTitles.addView(text("Заряд батареи", 15, Color.WHITE, true));
+        LinearLayout batteryLabel = new LinearLayout(this);
+        batteryLabel.setGravity(Gravity.CENTER_VERTICAL);
+        batteryLabel.setOrientation(LinearLayout.HORIZONTAL);
+        batteryLabel.addView(electricIcon("ϟ", ELECTRIC_TEAL, 15),
+                new LinearLayout.LayoutParams(dp(20), dp(20)));
+        batteryLabel.addView(text("Заряд батареи", 15, ELECTRIC_TEXT, true));
+        batteryTitles.addView(batteryLabel);
         addTopMargin(batteryTitles,
-                text("Данные UPSMON PRO", 12, Color.rgb(190, 207, 225), false), 2);
+                text("Данные UPSMON PRO", 12, ELECTRIC_MUTED, false), 2);
         batteryHeader.addView(batteryTitles);
 
-        batteryValue = text("--%", 34, Color.WHITE, true);
+        batteryValue = text("--%", 34, ELECTRIC_TEXT, true);
+        batteryValue.setShadowLayer(dp(8), 0, 0, Color.argb(75, 88, 187, 255));
+        animatedReadings.add(batteryValue);
         batteryHeader.addView(batteryValue);
         batteryCard.addView(batteryHeader);
 
-        batteryProgress = progressBar(TEAL);
+        batteryProgress = progressBar(ELECTRIC_TEAL);
         addTopMargin(batteryCard, batteryProgress, 10);
-        updateTime = text("Ожидание первых показаний…", 12,
-                Color.rgb(190, 207, 225), false);
+        updateTime = text("Ожидание первых показаний…", 12, ELECTRIC_MUTED, false);
         addTopMargin(batteryCard, updateTime, 6);
         body.addView(batteryCard);
 
-        TextView metricsTitle = text("Показатели", 17, TEXT, true);
+        TextView metricsTitle = text("Показатели", 17, ELECTRIC_TEXT, true);
         addTopMargin(body, metricsTitle, 18);
 
+        addVoltageMetricRow(body,
+                new MetricSpec("Входное напряжение", "В", ELECTRIC_BLUE, false, "ϟ"),
+                new MetricSpec("Выходное напряжение", "В", ELECTRIC_TEAL, false, "ϟ"));
         addMetricRow(body,
-                new MetricSpec("Входное напряжение", "В", BLUE, false),
-                new MetricSpec("Выходное напряжение", "В", TEAL, false));
+                new MetricSpec("Нагрузка", "%", ELECTRIC_AMBER, true, "ϟ"),
+                new MetricSpec("Частота входа", "Гц", ELECTRIC_BLUE, false, "⌁"));
         addMetricRow(body,
-                new MetricSpec("Нагрузка", "%", AMBER, true),
-                new MetricSpec("Частота входа", "Гц", BLUE, false));
-        addMetricRow(body,
-                new MetricSpec("Частота выхода", "Гц", TEAL, false),
-                new MetricSpec("Уровень батареи", "%", GREEN, true));
+                new MetricSpec("Частота выхода", "Гц", ELECTRIC_TEAL, false, "⌁"),
+                new MetricSpec("Уровень батареи", "%", ELECTRIC_GREEN, true, "ϟ"));
 
-        zeroDataNote = text("", 12, AMBER, false);
+        zeroDataNote = text("", 12, ELECTRIC_AMBER, false);
         zeroDataNote.setVisibility(View.GONE);
         addTopMargin(body, zeroDataNote, 8);
 
-        TextView stateTitle = text("Состояния", 17, TEXT, true);
+        TextView stateTitle = text("Состояния", 17, ELECTRIC_TEXT, true);
         addTopMargin(body, stateTitle, 18);
         LinearLayout stateRow = new LinearLayout(this);
         stateRow.setOrientation(LinearLayout.HORIZONTAL);
-        stateRow.addView(stateCard("Режим AVR", "—"), weightedParams(1, 4));
-        stateRow.addView(stateCard("Источник питания", "—"), weightedParams(1, 4));
-        stateRow.addView(stateCard("ИБП", "—"), weightedParams(1, 4));
+        stateRow.addView(stateCard("Режим AVR", "—", "⌁"), weightedParams(1, 1));
+        stateRow.addView(stateCard("Источник питания", "—", "ϟ"), weightedParams(1, 1));
+        stateRow.addView(stateCard("ИБП", "—", "◈"), weightedParams(1, 1));
         avrStatus = (TextView) ((LinearLayout) stateRow.getChildAt(0)).getChildAt(1);
-        utilityStatus = (TextView) ((LinearLayout) stateRow.getChildAt(1)).getChildAt(1);
+        utilityStatus = (TextView) ((LinearLayout) stateRow.getChildAt(1))
+                .getChildAt(1);
         upsStatus = (TextView) ((LinearLayout) stateRow.getChildAt(2)).getChildAt(1);
         body.addView(stateRow);
 
         TextView info = text(
                 "Сервер передаёт заряд батареи, но не отдельный флаг её исправности. Неизвестные коды состояния отображаются без догадок.",
-                11, SECONDARY, false);
+                11, ELECTRIC_MUTED, false);
         addTopMargin(body, info, 8);
 
+        lightningOverlay = new LightningOverlayView(this);
+        contentFrame.addView(lightningOverlay,
+                new FrameLayout.LayoutParams(-1, -1));
         scroll.addView(body);
         contentFrame.addView(scroll);
         buildBottomNavigation();
         if (latestTelemetry != null) {
             renderTelemetry(latestTelemetry, new Date());
         }
+        startDashboardAnimations();
     }
 
     private void renderControls() {
+        setDashboardTheme(false);
         showingControls = true;
         showingHistory = false;
         showingUsers = false;
@@ -1014,6 +1275,7 @@ public class MainActivity extends Activity {
     }
 
     private void renderHistory() {
+        setDashboardTheme(false);
         showingControls = false;
         showingHistory = true;
         showingUsers = false;
@@ -1051,6 +1313,7 @@ public class MainActivity extends Activity {
             return;
         }
 
+        setDashboardTheme(false);
         showingControls = false;
         showingHistory = false;
         showingUsers = true;
@@ -1304,41 +1567,121 @@ public class MainActivity extends Activity {
         addTopMargin(parent, row, 10);
     }
 
-    private MetricCard createMetricCard(MetricSpec spec) {
-        LinearLayout card = card(Color.WHITE, 17);
-        card.setBackground(roundRect(Color.WHITE, 17, Color.rgb(225, 232, 240), 1));
+    private void addVoltageMetricRow(
+            LinearLayout parent, MetricSpec left, MetricSpec right) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        MetricCard leftCard = createVoltageMetricCard(left);
+        MetricCard rightCard = createVoltageMetricCard(right);
+        row.addView(leftCard.container, weightedParams(1, 5));
+        row.addView(rightCard.container, weightedParams(1, 5));
+        addTopMargin(parent, row, 10);
+    }
 
-        View accent = new View(this);
-        accent.setBackground(roundRect(spec.color, 4, spec.color, 0));
-        card.addView(accent, new LinearLayout.LayoutParams(dp(30), dp(4)));
+    private MetricCard createVoltageMetricCard(MetricSpec spec) {
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 17);
+        card.setPadding(dp(11), dp(10), dp(11), dp(10));
+        card.setBackground(electricCardBackground());
+        card.addView(metricLabelRow(spec));
 
-        addTopMargin(card, text(spec.label, 12, SECONDARY, false), 9);
+        VoltageGaugeView gauge = new VoltageGaugeView(this, spec.color);
+        voltageGauges.add(gauge);
+        LinearLayout.LayoutParams gaugeParams =
+                new LinearLayout.LayoutParams(-1, dp(78));
+        gaugeParams.topMargin = dp(2);
+        card.addView(gauge, gaugeParams);
+
+        LinearLayout scale = new LinearLayout(this);
+        scale.setGravity(Gravity.CENTER_VERTICAL);
+        scale.setOrientation(LinearLayout.HORIZONTAL);
+        TextView minimum = text("0", 8, ELECTRIC_MUTED, false);
+        TextView midpoint = text("150", 8, ELECTRIC_MUTED, false);
+        TextView maximum = text("300", 8, ELECTRIC_MUTED, false);
+        scale.addView(minimum, new LinearLayout.LayoutParams(0, -2, 1f));
+        midpoint.setGravity(Gravity.CENTER);
+        scale.addView(midpoint, new LinearLayout.LayoutParams(0, -2, 1f));
+        maximum.setGravity(Gravity.END);
+        scale.addView(maximum, new LinearLayout.LayoutParams(0, -2, 1f));
+        card.addView(scale);
+
         LinearLayout valueRow = new LinearLayout(this);
         valueRow.setGravity(Gravity.BOTTOM);
         valueRow.setOrientation(LinearLayout.HORIZONTAL);
-        TextView value = text("—", 24, TEXT, true);
+        TextView value = text("—", 23, ELECTRIC_TEXT, true);
+        value.setShadowLayer(dp(7), 0, 0,
+                Color.argb(65, Color.red(spec.color), Color.green(spec.color),
+                        Color.blue(spec.color)));
+        animatedReadings.add(value);
         valueRow.addView(value);
-        TextView unit = text(" " + spec.unit, 12, SECONDARY, false);
+        TextView unit = text(" " + spec.unit, 11, ELECTRIC_MUTED, false);
         LinearLayout.LayoutParams unitParams = new LinearLayout.LayoutParams(-2, -2);
         unitParams.bottomMargin = dp(3);
         valueRow.addView(unit, unitParams);
-        addTopMargin(card, valueRow, 2);
+        addTopMargin(card, valueRow, 1);
+
+        MetricCard metric = new MetricCard(card, value, null, gauge);
+        metricCards.add(metric);
+        return metric;
+    }
+
+    private MetricCard createMetricCard(MetricSpec spec) {
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 17);
+        card.setPadding(dp(12), dp(11), dp(12), dp(10));
+        card.setBackground(electricCardBackground());
+        card.addView(metricLabelRow(spec));
+
+        LinearLayout valueRow = new LinearLayout(this);
+        valueRow.setGravity(Gravity.BOTTOM);
+        valueRow.setOrientation(LinearLayout.HORIZONTAL);
+        TextView value = text("—", 20, ELECTRIC_TEXT, true);
+        value.setShadowLayer(dp(6), 0, 0,
+                Color.argb(55, Color.red(spec.color), Color.green(spec.color),
+                        Color.blue(spec.color)));
+        animatedReadings.add(value);
+        valueRow.addView(value);
+        TextView unit = text(" " + spec.unit, 11, ELECTRIC_MUTED, false);
+        LinearLayout.LayoutParams unitParams = new LinearLayout.LayoutParams(-2, -2);
+        unitParams.bottomMargin = dp(3);
+        valueRow.addView(unit, unitParams);
+        addTopMargin(card, valueRow, 6);
 
         ProgressBar progress = spec.progress ? progressBar(spec.color) : null;
         if (progress != null) {
             addTopMargin(card, progress, 8);
         }
-        MetricCard metric = new MetricCard(card, value, progress);
+        MetricCard metric = new MetricCard(card, value, progress, null);
         metricCards.add(metric);
         return metric;
     }
 
-    private LinearLayout stateCard(String label, String value) {
-        LinearLayout card = card(Color.WHITE, 15);
-        card.setBackground(roundRect(Color.WHITE, 15, Color.rgb(225, 232, 240), 1));
-        card.addView(text(label, 11, SECONDARY, false));
-        TextView valueView = text(value, 14, TEXT, true);
-        addTopMargin(card, valueView, 5);
+    private LinearLayout metricLabelRow(MetricSpec spec) {
+        LinearLayout labelRow = new LinearLayout(this);
+        labelRow.setGravity(Gravity.CENTER_VERTICAL);
+        labelRow.setOrientation(LinearLayout.HORIZONTAL);
+        labelRow.addView(electricIcon(spec.icon, spec.color, 13),
+                new LinearLayout.LayoutParams(dp(18), dp(18)));
+        TextView label = text(spec.label, 11, ELECTRIC_MUTED, false);
+        label.setSingleLine(true);
+        labelRow.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+        return labelRow;
+    }
+
+    private LinearLayout stateCard(String label, String value, String iconGlyph) {
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 15);
+        card.setPadding(dp(8), dp(8), dp(8), dp(8));
+        card.setBackground(electricCardBackground());
+        LinearLayout labelRow = new LinearLayout(this);
+        labelRow.setGravity(Gravity.CENTER_VERTICAL);
+        labelRow.setOrientation(LinearLayout.HORIZONTAL);
+        labelRow.addView(electricIcon(iconGlyph, ELECTRIC_TEAL, 11),
+                new LinearLayout.LayoutParams(dp(15), dp(16)));
+        TextView labelView = text(label, 9, ELECTRIC_MUTED, false);
+        labelView.setSingleLine(true);
+        labelRow.addView(labelView, new LinearLayout.LayoutParams(0, -2, 1f));
+        card.addView(labelRow);
+        TextView valueView = text(value, 11, ELECTRIC_TEXT, true);
+        animatedReadings.add(valueView);
+        addTopMargin(card, valueView, 4);
         return card;
     }
 
@@ -1358,21 +1701,24 @@ public class MainActivity extends Activity {
         bottomNavigation.removeAllViews();
         bottomNavigation.setVisibility(View.VISIBLE);
 
+        int activeColor = dashboardTheme ? ELECTRIC_BLUE : BLUE;
+        int inactiveColor = dashboardTheme ? ELECTRIC_SURFACE_TOP
+                : Color.rgb(225, 232, 239);
+        int inactiveTextColor = dashboardTheme ? ELECTRIC_MUTED : TEXT;
         Button monitor = button("Мониторинг",
                 !showingControls && !showingHistory && !showingUsers
-                ? BLUE : Color.rgb(225, 232, 239));
+                        ? activeColor : inactiveColor);
         monitor.setTextColor(!showingControls && !showingHistory && !showingUsers
-                ? Color.WHITE : TEXT);
+                ? Color.WHITE : inactiveTextColor);
         monitor.setOnClickListener(view -> renderMonitor());
 
-        Button history = button("История", showingHistory
-                ? BLUE : Color.rgb(225, 232, 239));
-        history.setTextColor(showingHistory ? Color.WHITE : TEXT);
+        Button history = button("История", showingHistory ? activeColor : inactiveColor);
+        history.setTextColor(showingHistory ? Color.WHITE : inactiveTextColor);
         history.setOnClickListener(view -> renderHistory());
 
-        Button controls = button("Управление", showingControls
-                ? BLUE : Color.rgb(225, 232, 239));
-        controls.setTextColor(showingControls ? Color.WHITE : TEXT);
+        Button controls = button("Управление",
+                showingControls ? activeColor : inactiveColor);
+        controls.setTextColor(showingControls ? Color.WHITE : inactiveTextColor);
         controls.setOnClickListener(view -> renderControls());
 
         int margin = isAdminUser ? 2 : 3;
@@ -1380,9 +1726,9 @@ public class MainActivity extends Activity {
         bottomNavigation.addView(history, weightedParams(1, margin));
         bottomNavigation.addView(controls, weightedParams(1, margin));
         if (isAdminUser) {
-            Button users = button("Пользователи", showingUsers
-                    ? BLUE : Color.rgb(225, 232, 239));
-            users.setTextColor(showingUsers ? Color.WHITE : TEXT);
+            Button users = button("Пользователи",
+                    showingUsers ? activeColor : inactiveColor);
+            users.setTextColor(showingUsers ? Color.WHITE : inactiveTextColor);
             users.setOnClickListener(view -> renderUsers());
             bottomNavigation.addView(users, weightedParams(1, 2));
         }
@@ -1393,8 +1739,8 @@ public class MainActivity extends Activity {
             return;
         }
 
-        batteryValue.setText(formatNumber(telemetry.batteryPercent) + "%");
-        batteryProgress.setProgress(clampPercent(telemetry.batteryPercent));
+        animateBatteryValue(telemetry.batteryPercent);
+        animateBatteryProgress(clampPercent(telemetry.batteryPercent));
         metricCards.get(0).set(telemetry.inputVoltage, null);
         metricCards.get(1).set(telemetry.outputVoltage, null);
         metricCards.get(2).set(telemetry.loadPercent, telemetry.loadPercent);
@@ -1402,16 +1748,16 @@ public class MainActivity extends Activity {
         metricCards.get(4).set(telemetry.outputFrequency, null);
         metricCards.get(5).set(telemetry.batteryPercent, telemetry.batteryPercent);
 
-        avrStatus.setText(telemetry.avrMode == 1
+        setAnimatedText(avrStatus, telemetry.avrMode == 1
                 ? "Норма" : "Код " + telemetry.avrMode);
         if (telemetry.utilityState == UtilityPowerState.GRID_AVAILABLE_CODE) {
-            utilityStatus.setText("От электросети");
+            setAnimatedText(utilityStatus, "От электросети");
         } else if (telemetry.utilityState == UtilityPowerState.GRID_FAILED_CODE) {
-            utilityStatus.setText("От батареи");
+            setAnimatedText(utilityStatus, "От батареи");
         } else {
-            utilityStatus.setText("Код " + telemetry.utilityState);
+            setAnimatedText(utilityStatus, "Код " + telemetry.utilityState);
         }
-        upsStatus.setText(telemetry.upsState == 1
+        setAnimatedText(upsStatus, telemetry.upsState == 1
                 ? "Нормально" : "Код " + telemetry.upsState);
 
         SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -1682,7 +2028,7 @@ public class MainActivity extends Activity {
                 }
                 latestTelemetry = telemetry;
                 connectionStatus.setText("Сервер доступен · данные обновляются каждые 2 сек.");
-                connectionStatus.setTextColor(GREEN);
+                connectionStatus.setTextColor(connectionStatusColor(true));
                 renderTelemetry(telemetry, receivedAt);
             });
         } catch (IOException exception) {
@@ -1694,7 +2040,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 connectionStatus.setText("Нет связи · " + message);
-                connectionStatus.setTextColor(Color.rgb(184, 67, 67));
+                connectionStatus.setTextColor(connectionStatusColor(false));
             });
         } finally {
             if (connection != null) {
@@ -1742,7 +2088,8 @@ public class MainActivity extends Activity {
         progress.setMax(100);
         progress.setProgressTintList(ColorStateList.valueOf(color));
         progress.setProgressBackgroundTintList(
-                ColorStateList.valueOf(Color.rgb(221, 229, 237)));
+                ColorStateList.valueOf(dashboardTheme
+                        ? Color.rgb(35, 57, 75) : Color.rgb(221, 229, 237)));
         return progress;
     }
 
@@ -1848,12 +2195,14 @@ public class MainActivity extends Activity {
         final String unit;
         final int color;
         final boolean progress;
+        final String icon;
 
-        MetricSpec(String label, String unit, int color, boolean progress) {
+        MetricSpec(String label, String unit, int color, boolean progress, String icon) {
             this.label = label;
             this.unit = unit;
             this.color = color;
             this.progress = progress;
+            this.icon = icon;
         }
     }
 
@@ -1861,19 +2210,66 @@ public class MainActivity extends Activity {
         final LinearLayout container;
         final TextView value;
         final ProgressBar progress;
+        final VoltageGaugeView gauge;
+        private float displayedValue;
+        private boolean hasValue;
+        private ValueAnimator numberAnimator;
+        private ValueAnimator progressAnimator;
 
-        MetricCard(LinearLayout container, TextView value, ProgressBar progress) {
+        MetricCard(LinearLayout container, TextView value, ProgressBar progress,
+                   VoltageGaugeView gauge) {
             this.container = container;
             this.value = value;
             this.progress = progress;
+            this.gauge = gauge;
         }
 
         void set(double measurement, Double percent) {
-            value.setText(format(measurement));
+            if (gauge != null) {
+                gauge.setVoltage(measurement);
+            }
+            if (numberAnimator != null) {
+                numberAnimator.cancel();
+                numberAnimator = null;
+            }
+            if (!hasValue || displayedValue == (float) measurement) {
+                displayedValue = (float) measurement;
+                value.setText(format(displayedValue));
+                hasValue = true;
+            } else {
+                numberAnimator = ValueAnimator.ofFloat(
+                        displayedValue, (float) measurement);
+                numberAnimator.setDuration(650);
+                numberAnimator.addUpdateListener(animator -> {
+                    displayedValue = (float) animator.getAnimatedValue();
+                    value.setText(format(displayedValue));
+                });
+                numberAnimator.start();
+            }
             if (progress != null) {
-                progress.setProgress(percent == null
-                        ? 0
-                        : (int) Math.max(0, Math.min(100, Math.round(percent))));
+                int targetProgress = percent == null ? 0
+                        : (int) Math.max(0, Math.min(100, Math.round(percent)));
+                if (progressAnimator != null) {
+                    progressAnimator.cancel();
+                    progressAnimator = null;
+                }
+                progressAnimator = ValueAnimator.ofInt(
+                        progress.getProgress(), targetProgress);
+                progressAnimator.setDuration(650);
+                progressAnimator.addUpdateListener(animator ->
+                        progress.setProgress((int) animator.getAnimatedValue()));
+                progressAnimator.start();
+            }
+        }
+
+        void cancelAnimations() {
+            if (numberAnimator != null) {
+                numberAnimator.cancel();
+                numberAnimator = null;
+            }
+            if (progressAnimator != null) {
+                progressAnimator.cancel();
+                progressAnimator = null;
             }
         }
 
