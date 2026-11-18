@@ -19,4 +19,11 @@ public class AdaptiveLayoutMathTest {
     public void usesTwoColumnsWhenFontScaleIsLarge() {
         assertEquals(2, AdaptiveLayoutMath.stateColumnCount(420, 1.2f));
     }
+
+    @Test
+    public void stacksVoltageMetersOnCompactScreens() {
+        assertEquals(1, AdaptiveLayoutMath.voltageMeterColumnCount(359, 1f));
+        assertEquals(2, AdaptiveLayoutMath.voltageMeterColumnCount(360, 1f));
+        assertEquals(1, AdaptiveLayoutMath.voltageMeterColumnCount(420, 1.3f));
+    }
 }

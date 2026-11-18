@@ -12,4 +12,8 @@
     <string name="invalid_host">Введите локальный IPv4-адрес частной сети</string>
     <string name="private_addresses_only">Поддерживаются адреса 10.x.x.x, 172.16–31.x.x и 192.168.x.x.</string>
     <string name="invalid_port">Укажите порт от 1 до 65535</string>
+    <string name="nixie_voltage_accessibility">%1$s: %2$.1f вольт</string>
+    <string name="nixie_voltage_missing">%1$s: показание недоступно</string>
+    <string name="nixie_voltage_value">%1$s В</string>
+    <string name="nixie_battery_accessibility">Батарея: %1$d процентов, %2$d из 8 ламп</string>
 </resources>

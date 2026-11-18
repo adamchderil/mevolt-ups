@@ -88,14 +88,14 @@ public class MainActivity extends Activity {
     private static final int BACKGROUND = Color.rgb(243, 246, 250);
     private static final int TEXT = Color.rgb(31, 45, 61);
     private static final int SECONDARY = Color.rgb(104, 119, 137);
-    private static final int ELECTRIC_BACKGROUND = Color.rgb(7, 16, 28);
-    private static final int ELECTRIC_SURFACE_TOP = Color.rgb(17, 34, 52);
-    private static final int ELECTRIC_SURFACE_BOTTOM = Color.rgb(11, 24, 39);
-    private static final int ELECTRIC_OUTLINE = Color.rgb(37, 68, 91);
-    private static final int ELECTRIC_TEXT = Color.rgb(233, 248, 255);
-    private static final int ELECTRIC_MUTED = Color.rgb(145, 169, 191);
-    private static final int ELECTRIC_BLUE = Color.rgb(88, 187, 255);
-    private static final int ELECTRIC_TEAL = Color.rgb(66, 225, 207);
+    private static final int ELECTRIC_BACKGROUND = Color.rgb(8, 10, 12);
+    private static final int ELECTRIC_SURFACE_TOP = Color.rgb(35, 31, 27);
+    private static final int ELECTRIC_SURFACE_BOTTOM = Color.rgb(18, 19, 20);
+    private static final int ELECTRIC_OUTLINE = Color.rgb(93, 70, 48);
+    private static final int ELECTRIC_TEXT = Color.rgb(243, 236, 228);
+    private static final int ELECTRIC_MUTED = Color.rgb(184, 169, 149);
+    private static final int ELECTRIC_BLUE = Color.rgb(255, 164, 83);
+    private static final int ELECTRIC_TEAL = Color.rgb(232, 164, 92);
     private static final int ELECTRIC_GREEN = Color.rgb(120, 235, 197);
     private static final int ELECTRIC_AMBER = Color.rgb(255, 194, 88);
     private static final int ELECTRIC_RED = Color.rgb(255, 130, 130);
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
             Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private final List<MetricCard> metricCards = new ArrayList<>();
-    private final List<VoltageGaugeView> voltageGauges = new ArrayList<>();
+    private final List<NixieMeterView> nixieMeters = new ArrayList<>();
     private final List<View> animatedIcons = new ArrayList<>();
     private final List<View> animatedReadings = new ArrayList<>();
 
@@ -123,9 +123,10 @@ public class MainActivity extends Activity {
     private TextView historyStatus;
     private TextView historyContent;
     private TextView batteryValue;
+    private TextView batteryCellCount;
     private TextView updateTime;
     private TextView zeroDataNote;
-    private ProgressBar batteryProgress;
+    private NixieBatteryView batteryModel;
     private TextView avrStatus;
     private TextView utilityStatus;
     private TextView upsStatus;
@@ -141,7 +142,6 @@ public class MainActivity extends Activity {
     private LightningOverlayView lightningOverlay;
     private ValueAnimator dashboardAnimator;
     private ValueAnimator batteryNumberAnimator;
-    private ValueAnimator batteryProgressAnimator;
     private String currentUsername;
     private char[] activePassword;
     private File pendingUpdateFile;
@@ -330,7 +330,7 @@ public class MainActivity extends Activity {
             stopDashboardAnimations();
             animatedIcons.clear();
             animatedReadings.clear();
-            voltageGauges.clear();
+            nixieMeters.clear();
             lightningOverlay = null;
         }
         dashboardTheme = enabled;
@@ -413,8 +413,11 @@ public class MainActivity extends Activity {
         if (lightningOverlay != null) {
             lightningOverlay.startAnimation();
         }
-        for (VoltageGaugeView gauge : voltageGauges) {
-            gauge.startAnimation();
+        for (NixieMeterView meter : nixieMeters) {
+            meter.startAnimation();
+        }
+        if (batteryModel != null) {
+            batteryModel.startAnimation();
         }
     }
 
@@ -426,10 +429,6 @@ public class MainActivity extends Activity {
         if (batteryNumberAnimator != null) {
             batteryNumberAnimator.cancel();
             batteryNumberAnimator = null;
-        }
-        if (batteryProgressAnimator != null) {
-            batteryProgressAnimator.cancel();
-            batteryProgressAnimator = null;
         }
         for (MetricCard metric : metricCards) {
             metric.cancelAnimations();
@@ -446,8 +445,11 @@ public class MainActivity extends Activity {
         if (lightningOverlay != null) {
             lightningOverlay.stopAnimation();
         }
-        for (VoltageGaugeView gauge : voltageGauges) {
-            gauge.stopAnimation();
+        for (NixieMeterView meter : nixieMeters) {
+            meter.stopAnimation();
+        }
+        if (batteryModel != null) {
+            batteryModel.stopAnimation();
         }
     }
 
@@ -471,11 +473,11 @@ public class MainActivity extends Activity {
 
     private GradientDrawable electricBatteryBackground() {
         GradientDrawable background = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{Color.rgb(16, 36, 58), Color.rgb(16, 60, 82),
-                        Color.rgb(16, 45, 69)});
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.rgb(45, 34, 25), Color.rgb(26, 23, 21),
+                        Color.rgb(18, 19, 20)});
         background.setCornerRadius(dp(20));
-        background.setStroke(dp(1), Color.argb(75, 88, 209, 255));
+        background.setStroke(dp(1), Color.argb(110, 213, 164, 107));
         return background;
     }
 
@@ -486,6 +488,8 @@ public class MainActivity extends Activity {
         }
         if (!hasBatteryValue || displayedBatteryPercent == target) {
             batteryValue.setText(formatNumber(target) + "%");
+            batteryModel.setBatteryPercent(target);
+            batteryCellCount.setText(NixieDisplayMath.activeBatteryCells(target) + " из 8 ячеек");
             displayedBatteryPercent = target;
             hasBatteryValue = true;
             return;
@@ -496,20 +500,11 @@ public class MainActivity extends Activity {
         batteryNumberAnimator.addUpdateListener(animator -> {
             displayedBatteryPercent = (float) animator.getAnimatedValue();
             batteryValue.setText(formatNumber(displayedBatteryPercent) + "%");
+            batteryModel.setBatteryPercent(displayedBatteryPercent);
+            batteryCellCount.setText(NixieDisplayMath.activeBatteryCells(
+                    displayedBatteryPercent) + " из 8 ячеек");
         });
         batteryNumberAnimator.start();
-    }
-
-    private void animateBatteryProgress(int target) {
-        if (batteryProgressAnimator != null) {
-            batteryProgressAnimator.cancel();
-        }
-        batteryProgressAnimator = ValueAnimator.ofInt(
-                batteryProgress.getProgress(), target);
-        batteryProgressAnimator.setDuration(650);
-        batteryProgressAnimator.addUpdateListener(animator ->
-                batteryProgress.setProgress((int) animator.getAnimatedValue()));
-        batteryProgressAnimator.start();
     }
 
     private void setAnimatedText(TextView view, String value) {
@@ -1179,7 +1174,8 @@ public class MainActivity extends Activity {
         stopDashboardAnimations();
         animatedIcons.clear();
         animatedReadings.clear();
-        voltageGauges.clear();
+        nixieMeters.clear();
+        batteryModel = null;
         lightningOverlay = null;
         setDashboardTheme(true);
         homeMenuButton.setVisibility(isAuthenticated ? View.VISIBLE : View.GONE);
@@ -1198,44 +1194,58 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = pageBody();
 
+        TextView voltageTitle = text("Напряжение", 17, ELECTRIC_TEXT, true);
+        body.addView(voltageTitle);
+        addNixieMeterRow(body);
+
         LinearLayout batteryCard = card(ELECTRIC_SURFACE_TOP, 20);
         batteryCard.setBackground(electricBatteryBackground());
         LinearLayout batteryHeader = new LinearLayout(this);
         batteryHeader.setGravity(Gravity.CENTER_VERTICAL);
-        batteryHeader.setOrientation(LinearLayout.HORIZONTAL);
+        batteryHeader.setOrientation(LinearLayout.VERTICAL);
 
-        LinearLayout batteryTitles = new LinearLayout(this);
-        batteryTitles.setOrientation(LinearLayout.VERTICAL);
-        batteryTitles.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
         LinearLayout batteryLabel = new LinearLayout(this);
         batteryLabel.setGravity(Gravity.CENTER_VERTICAL);
         batteryLabel.setOrientation(LinearLayout.HORIZONTAL);
         batteryLabel.addView(electricIcon("ϟ", ELECTRIC_TEAL, 15),
                 new LinearLayout.LayoutParams(dp(20), dp(20)));
-        batteryLabel.addView(text("Заряд батареи", 15, ELECTRIC_TEXT, true));
-        batteryTitles.addView(batteryLabel);
-        addTopMargin(batteryTitles,
-                text("Данные UPSMON PRO", 12, ELECTRIC_MUTED, false), 2);
-        batteryHeader.addView(batteryTitles);
-
-        batteryValue = text("--%", 34, ELECTRIC_TEXT, true);
-        batteryValue.setShadowLayer(dp(8), 0, 0, Color.argb(75, 88, 187, 255));
-        animatedReadings.add(batteryValue);
-        batteryHeader.addView(batteryValue);
+        batteryLabel.addView(text("Батарея ИБП", 15, ELECTRIC_TEXT, true));
+        batteryHeader.addView(batteryLabel);
+        addTopMargin(batteryHeader,
+                text("РЕЗЕРВ ПИТАНИЯ · ДАННЫЕ UPSMON PRO", 10, ELECTRIC_MUTED, true), 2);
         batteryCard.addView(batteryHeader);
 
-        batteryProgress = progressBar(ELECTRIC_TEAL);
-        addTopMargin(batteryCard, batteryProgress, 10);
+        LinearLayout batteryContent = new LinearLayout(this);
+        batteryContent.setGravity(Gravity.CENTER_VERTICAL);
+        batteryContent.setOrientation(LinearLayout.HORIZONTAL);
+        batteryModel = new NixieBatteryView(this);
+        animatedIcons.add(batteryModel);
+        batteryContent.addView(batteryModel,
+                new LinearLayout.LayoutParams(0, dp(135), 1f));
+
+        LinearLayout batteryDetails = new LinearLayout(this);
+        batteryDetails.setGravity(Gravity.CENTER_VERTICAL);
+        batteryDetails.setOrientation(LinearLayout.VERTICAL);
+        batteryValue = text("--%", 28, ELECTRIC_TEXT, true);
+        batteryValue.setShadowLayer(dp(8), 0, 0, Color.argb(90, 255, 151, 48));
+        animatedReadings.add(batteryValue);
+        batteryDetails.addView(batteryValue);
+        addTopMargin(batteryDetails,
+                text("ЗАРЯД\nАККУМУЛЯТОРА", 9, ELECTRIC_MUTED, true), 4);
+        batteryCellCount = text("— из 8 ячеек", 9, ELECTRIC_MUTED, false);
+        addTopMargin(batteryDetails, batteryCellCount, 8);
+        LinearLayout.LayoutParams batteryDetailsParams =
+                new LinearLayout.LayoutParams(dp(82), -2);
+        batteryDetailsParams.leftMargin = dp(4);
+        batteryContent.addView(batteryDetails, batteryDetailsParams);
+        addTopMargin(batteryCard, batteryContent, 3);
         updateTime = text("Ожидание первых показаний…", 12, ELECTRIC_MUTED, false);
         addTopMargin(batteryCard, updateTime, 6);
-        body.addView(batteryCard);
+        addTopMargin(body, batteryCard, 14);
 
         TextView metricsTitle = text("Показатели", 17, ELECTRIC_TEXT, true);
         addTopMargin(body, metricsTitle, 18);
 
-        addVoltageMetricRow(body,
-                new MetricSpec("Входное напряжение", "В", ELECTRIC_BLUE, false, "ϟ"),
-                new MetricSpec("Выходное напряжение", "В", ELECTRIC_TEAL, false, "ϟ"));
         addMetricRow(body,
                 new MetricSpec("Нагрузка", "%", ELECTRIC_AMBER, true, "ϟ"),
                 new MetricSpec("Частота входа", "Гц", ELECTRIC_BLUE, false, "⌁"));
@@ -1625,61 +1635,27 @@ public class MainActivity extends Activity {
         addTopMargin(parent, row, 10);
     }
 
-    private void addVoltageMetricRow(
-            LinearLayout parent, MetricSpec left, MetricSpec right) {
+    private void addNixieMeterRow(LinearLayout parent) {
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        MetricCard leftCard = createVoltageMetricCard(left);
-        MetricCard rightCard = createVoltageMetricCard(right);
-        row.addView(leftCard.container, weightedParams(1, 5));
-        row.addView(rightCard.container, weightedParams(1, 5));
-        addTopMargin(parent, row, 10);
-    }
-
-    private MetricCard createVoltageMetricCard(MetricSpec spec) {
-        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 17);
-        card.setPadding(dp(11), dp(10), dp(11), dp(10));
-        card.setBackground(electricCardBackground());
-        card.addView(metricLabelRow(spec));
-
-        VoltageGaugeView gauge = new VoltageGaugeView(this, spec.color);
-        voltageGauges.add(gauge);
-        LinearLayout.LayoutParams gaugeParams =
-                new LinearLayout.LayoutParams(-1, dp(78));
-        gaugeParams.topMargin = dp(2);
-        card.addView(gauge, gaugeParams);
-
-        LinearLayout scale = new LinearLayout(this);
-        scale.setGravity(Gravity.CENTER_VERTICAL);
-        scale.setOrientation(LinearLayout.HORIZONTAL);
-        TextView minimum = text("0", 8, ELECTRIC_MUTED, false);
-        TextView midpoint = text("150", 8, ELECTRIC_MUTED, false);
-        TextView maximum = text("300", 8, ELECTRIC_MUTED, false);
-        scale.addView(minimum, new LinearLayout.LayoutParams(0, -2, 1f));
-        midpoint.setGravity(Gravity.CENTER);
-        scale.addView(midpoint, new LinearLayout.LayoutParams(0, -2, 1f));
-        maximum.setGravity(Gravity.END);
-        scale.addView(maximum, new LinearLayout.LayoutParams(0, -2, 1f));
-        card.addView(scale);
-
-        LinearLayout valueRow = new LinearLayout(this);
-        valueRow.setGravity(Gravity.BOTTOM);
-        valueRow.setOrientation(LinearLayout.HORIZONTAL);
-        TextView value = text("—", 23, ELECTRIC_TEXT, true);
-        value.setShadowLayer(dp(7), 0, 0,
-                Color.argb(65, Color.red(spec.color), Color.green(spec.color),
-                        Color.blue(spec.color)));
-        animatedReadings.add(value);
-        valueRow.addView(value);
-        TextView unit = text(" " + spec.unit, 11, ELECTRIC_MUTED, false);
-        LinearLayout.LayoutParams unitParams = new LinearLayout.LayoutParams(-2, -2);
-        unitParams.bottomMargin = dp(3);
-        valueRow.addView(unit, unitParams);
-        addTopMargin(card, valueRow, 1);
-
-        MetricCard metric = new MetricCard(card, value, null, gauge);
-        metricCards.add(metric);
-        return metric;
+        int columns = AdaptiveLayoutMath.voltageMeterColumnCount(
+                getResources().getConfiguration().screenWidthDp,
+                getResources().getConfiguration().fontScale);
+        NixieMeterView input = new NixieMeterView(
+                this, "ВХОДНОЕ", "● СЕТЬ", Color.rgb(255, 151, 48));
+        NixieMeterView output = new NixieMeterView(
+                this, "ВЫХОДНОЕ", "● ИБП", Color.rgb(255, 151, 48));
+        nixieMeters.add(input);
+        nixieMeters.add(output);
+        if (columns == 1) {
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(input, new LinearLayout.LayoutParams(-1, -2));
+            addTopMargin(row, output, 8);
+        } else {
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.addView(input, weightedParams(1, 5));
+            row.addView(output, weightedParams(1, 5));
+        }
+        addTopMargin(parent, row, 8);
     }
 
     private MetricCard createMetricCard(MetricSpec spec) {
@@ -1707,7 +1683,7 @@ public class MainActivity extends Activity {
         if (progress != null) {
             addTopMargin(card, progress, 8);
         }
-        MetricCard metric = new MetricCard(card, value, progress, null);
+        MetricCard metric = new MetricCard(card, value, progress);
         metricCards.add(metric);
         return metric;
     }
@@ -1798,18 +1774,28 @@ public class MainActivity extends Activity {
     }
 
     private void renderTelemetry(UpsTelemetry telemetry, Date receivedAt) {
-        if (batteryValue == null || metricCards.size() != 6) {
+        if (batteryValue == null || batteryModel == null
+                || metricCards.size() != 4 || nixieMeters.size() != 2) {
             return;
         }
 
         animateBatteryValue(telemetry.batteryPercent);
-        animateBatteryProgress(clampPercent(telemetry.batteryPercent));
-        metricCards.get(0).set(telemetry.inputVoltage, null);
-        metricCards.get(1).set(telemetry.outputVoltage, null);
-        metricCards.get(2).set(telemetry.loadPercent, telemetry.loadPercent);
-        metricCards.get(3).set(telemetry.inputFrequency, null);
-        metricCards.get(4).set(telemetry.outputFrequency, null);
-        metricCards.get(5).set(telemetry.batteryPercent, telemetry.batteryPercent);
+        nixieMeters.get(0).setVoltage(telemetry.inputVoltage);
+        nixieMeters.get(1).setVoltage(telemetry.outputVoltage);
+        if (telemetry.utilityState == UtilityPowerState.GRID_AVAILABLE_CODE) {
+            nixieMeters.get(0).setSource("● СЕТЬ", ELECTRIC_GREEN);
+        } else if (telemetry.utilityState == UtilityPowerState.GRID_FAILED_CODE) {
+            nixieMeters.get(0).setSource("● НЕТ СЕТИ", ELECTRIC_RED);
+        } else {
+            nixieMeters.get(0).setSource("● КОД " + telemetry.utilityState, ELECTRIC_AMBER);
+        }
+        nixieMeters.get(1).setSource(telemetry.upsState == 1
+                ? "● ИБП" : "● КОД " + telemetry.upsState,
+                telemetry.upsState == 1 ? ELECTRIC_GREEN : ELECTRIC_AMBER);
+        metricCards.get(0).set(telemetry.loadPercent, telemetry.loadPercent);
+        metricCards.get(1).set(telemetry.inputFrequency, null);
+        metricCards.get(2).set(telemetry.outputFrequency, null);
+        metricCards.get(3).set(telemetry.batteryPercent, telemetry.batteryPercent);
 
         setAnimatedText(avrStatus, telemetry.avrMode == 1
                 ? "Норма" : "Код " + telemetry.avrMode);
@@ -2284,24 +2270,18 @@ public class MainActivity extends Activity {
         final LinearLayout container;
         final TextView value;
         final ProgressBar progress;
-        final VoltageGaugeView gauge;
         private float displayedValue;
         private boolean hasValue;
         private ValueAnimator numberAnimator;
         private ValueAnimator progressAnimator;
 
-        MetricCard(LinearLayout container, TextView value, ProgressBar progress,
-                   VoltageGaugeView gauge) {
+        MetricCard(LinearLayout container, TextView value, ProgressBar progress) {
             this.container = container;
             this.value = value;
             this.progress = progress;
-            this.gauge = gauge;
         }
 
         void set(double measurement, Double percent) {
-            if (gauge != null) {
-                gauge.setVoltage(measurement);
-            }
             if (numberAnimator != null) {
                 numberAnimator.cancel();
                 numberAnimator = null;
