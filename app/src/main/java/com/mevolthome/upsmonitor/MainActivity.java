@@ -19,16 +19,21 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -92,6 +97,11 @@ public class MainActivity extends Activity {
     private static final int ELECTRIC_GREEN = Color.rgb(120, 235, 197);
     private static final int ELECTRIC_AMBER = Color.rgb(255, 194, 88);
     private static final int ELECTRIC_RED = Color.rgb(255, 130, 130);
+    private static final int NAVIGATION_GROUP = 1;
+    private static final int NAVIGATION_MONITOR = 1;
+    private static final int NAVIGATION_HISTORY = 2;
+    private static final int NAVIGATION_CONTROLS = 3;
+    private static final int NAVIGATION_USERS = 4;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ScheduledExecutorService networkExecutor =
@@ -105,10 +115,9 @@ public class MainActivity extends Activity {
     private FrameLayout appRoot;
     private FrameLayout contentFrame;
     private LinearLayout shellRoot;
-    private LinearLayout bottomNavigation;
     private TextView toolbarTitle;
     private TextView connectionStatus;
-    private TextView toolbarSubtitle;
+    private ImageButton homeMenuButton;
     private TextView historyStatus;
     private TextView historyContent;
     private TextView batteryValue;
@@ -124,8 +133,8 @@ public class MainActivity extends Activity {
     private EditText loginPasswordInput;
     private TextView loginStatus;
     private Button loginButton;
-    private Button refreshButton;
-    private Button settingsButton;
+    private ImageButton refreshButton;
+    private ImageButton settingsButton;
     private View loginOverlay;
     private LightningOverlayView lightningOverlay;
     private ValueAnimator dashboardAnimator;
@@ -222,17 +231,27 @@ public class MainActivity extends Activity {
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
 
+        homeMenuButton = toolbarIconButton(
+                R.drawable.ic_home_24, "Открыть разделы", BACKGROUND);
+        LinearLayout.LayoutParams homeParams =
+                new LinearLayout.LayoutParams(dp(42), dp(42));
+        homeParams.rightMargin = dp(8);
+        toolbar.addView(homeMenuButton, homeParams);
+        homeMenuButton.setVisibility(View.GONE);
+        homeMenuButton.setOnClickListener(view -> showNavigationMenu(view));
+
         LinearLayout titleGroup = new LinearLayout(this);
         titleGroup.setOrientation(LinearLayout.VERTICAL);
         titleGroup.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
 
-        toolbarTitle = text("MeVolt UPS", 21, NAVY, true);
+        toolbarTitle = text("Koval Electronics", 19, NAVY, true);
+        toolbarTitle.setSingleLine(true);
+        toolbarTitle.setEllipsize(TextUtils.TruncateAt.END);
         titleGroup.addView(toolbarTitle);
-        toolbarSubtitle = text("Мониторинг UPSMON PRO", 12, SECONDARY, false);
-        titleGroup.addView(toolbarSubtitle);
         toolbar.addView(titleGroup);
 
-        refreshButton = button("Обновить", BLUE);
+        refreshButton = toolbarIconButton(
+                R.drawable.ic_refresh_24, "Обновить", BLUE);
         refreshButton.setOnClickListener(view -> {
             if (showingHistory) {
                 fetchHistoryOnce();
@@ -242,9 +261,10 @@ public class MainActivity extends Activity {
         });
         toolbar.addView(refreshButton);
 
-        settingsButton = button("Настройки", NAVY);
+        settingsButton = toolbarIconButton(
+                R.drawable.ic_settings_24, "Настройки", NAVY);
         LinearLayout.LayoutParams settingsParams =
-                new LinearLayout.LayoutParams(-2, dp(42));
+                new LinearLayout.LayoutParams(dp(42), dp(42));
         settingsParams.leftMargin = dp(6);
         settingsButton.setLayoutParams(settingsParams);
         settingsButton.setOnClickListener(view -> showSettingsDialog());
@@ -257,11 +277,6 @@ public class MainActivity extends Activity {
 
         contentFrame = new FrameLayout(this);
         root.addView(contentFrame, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        bottomNavigation = new LinearLayout(this);
-        bottomNavigation.setGravity(Gravity.CENTER);
-        bottomNavigation.setPadding(0, dp(8), 0, 0);
-        root.addView(bottomNavigation);
 
         appRoot = new FrameLayout(this);
         appRoot.addView(root, new FrameLayout.LayoutParams(-1, -1));
@@ -305,28 +320,29 @@ public class MainActivity extends Activity {
         if (toolbarTitle != null) {
             toolbarTitle.setTextColor(enabled ? ELECTRIC_TEXT : NAVY);
         }
-        if (toolbarSubtitle != null) {
-            toolbarSubtitle.setTextColor(enabled ? ELECTRIC_MUTED : SECONDARY);
-        }
         if (connectionStatus != null) {
             connectionStatus.setTextColor(enabled ? ELECTRIC_MUTED : SECONDARY);
             if (enabled && !animatedReadings.contains(connectionStatus)) {
                 animatedReadings.add(connectionStatus);
             }
         }
+        if (homeMenuButton != null) {
+            homeMenuButton.setBackgroundTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_SURFACE_TOP : BACKGROUND));
+            homeMenuButton.setImageTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_TEAL : NAVY));
+        }
         if (refreshButton != null) {
             refreshButton.setBackgroundTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_SURFACE_TOP : BACKGROUND));
+            refreshButton.setImageTintList(ColorStateList.valueOf(
                     enabled ? ELECTRIC_BLUE : BLUE));
-            refreshButton.setTextColor(Color.WHITE);
         }
         if (settingsButton != null) {
             settingsButton.setBackgroundTintList(ColorStateList.valueOf(
-                    enabled ? ELECTRIC_SURFACE_TOP : NAVY));
-            settingsButton.setTextColor(enabled ? ELECTRIC_TEXT : Color.WHITE);
-        }
-        if (bottomNavigation != null) {
-            bottomNavigation.setBackgroundColor(enabled
-                    ? ELECTRIC_BACKGROUND : BACKGROUND);
+                    enabled ? ELECTRIC_SURFACE_TOP : BACKGROUND));
+            settingsButton.setImageTintList(ColorStateList.valueOf(
+                    enabled ? ELECTRIC_TEXT : NAVY));
         }
         getWindow().setStatusBarColor(enabled ? ELECTRIC_BACKGROUND : Color.WHITE);
         getWindow().setNavigationBarColor(enabled ? ELECTRIC_BACKGROUND : Color.WHITE);
@@ -338,7 +354,8 @@ public class MainActivity extends Activity {
     }
 
     private void startDashboardAnimations() {
-        if (!activityResumed || !dashboardTheme) {
+        if (!activityResumed || !dashboardTheme || showingControls
+                || showingHistory || showingUsers) {
             return;
         }
         if (dashboardAnimator == null) {
@@ -577,9 +594,6 @@ public class MainActivity extends Activity {
                     return;
                 }
                 isAdminUser = authenticationResult.admin;
-                if (!showingControls && !showingHistory && !showingUsers) {
-                    buildBottomNavigation();
-                }
             });
         });
     }
@@ -879,7 +893,7 @@ public class MainActivity extends Activity {
         brand.setGravity(Gravity.CENTER);
         brand.setOrientation(LinearLayout.VERTICAL);
 
-        TextView title = text("Koval electronics", 31, Color.WHITE, true);
+        TextView title = text("Koval Electronics", 31, Color.WHITE, true);
         title.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
         title.setGravity(Gravity.CENTER);
         brand.addView(title);
@@ -908,6 +922,7 @@ public class MainActivity extends Activity {
         if (loginOverlay != null && loginOverlay.getParent() != null) {
             return;
         }
+        homeMenuButton.setVisibility(View.GONE);
         FrameLayout overlay = new FrameLayout(this);
         loginOverlay = overlay;
         overlay.setBackground(new GradientDrawable(
@@ -920,7 +935,7 @@ public class MainActivity extends Activity {
         wrapper.setOrientation(LinearLayout.VERTICAL);
         wrapper.setPadding(dp(24), dp(24), dp(24), dp(24));
 
-        TextView brand = text("Koval electronics", 25, Color.WHITE, true);
+        TextView brand = text("Koval Electronics", 25, Color.WHITE, true);
         brand.setGravity(Gravity.CENTER);
         wrapper.addView(brand);
 
@@ -1055,6 +1070,7 @@ public class MainActivity extends Activity {
                 isAdminUser = isAdmin;
                 currentUsername = username;
                 activePassword = authenticatedPassword;
+                homeMenuButton.setVisibility(View.VISIBLE);
                 getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
                         .putBoolean(UpsPowerMonitorService.MONITOR_ENABLED_KEY, true)
                         .putInt(UpsPowerMonitorService.LAST_POWER_STATE_KEY, -1)
@@ -1090,8 +1106,7 @@ public class MainActivity extends Activity {
         showingControls = false;
         showingUsers = false;
         contentFrame.removeAllViews();
-        bottomNavigation.setVisibility(View.GONE);
-        toolbarSubtitle.setText("Защищённое HTTPS-подключение");
+        homeMenuButton.setVisibility(View.GONE);
         connectionStatus.setText("Введите домен защищённого сервера UPSMON.");
 
         ScrollView scroll = new ScrollView(this);
@@ -1136,18 +1151,23 @@ public class MainActivity extends Activity {
         contentFrame.addView(scroll);
     }
 
-    private void renderMonitor() {
+    private void prepareThemedPage() {
         stopDashboardAnimations();
         animatedIcons.clear();
         animatedReadings.clear();
         voltageGauges.clear();
+        lightningOverlay = null;
         setDashboardTheme(true);
+        homeMenuButton.setVisibility(isAuthenticated ? View.VISIBLE : View.GONE);
+    }
+
+    private void renderMonitor() {
+        prepareThemedPage();
         showingControls = false;
         showingHistory = false;
         showingUsers = false;
         contentFrame.removeAllViews();
-        bottomNavigation.setVisibility(View.VISIBLE);
-        toolbarSubtitle.setText(connectedHost + " · HTTPS · UPSMON PRO");
+        homeMenuButton.setVisibility(isAuthenticated ? View.VISIBLE : View.GONE);
         metricCards.clear();
         hasBatteryValue = false;
 
@@ -1226,7 +1246,6 @@ public class MainActivity extends Activity {
                 new FrameLayout.LayoutParams(-1, -1));
         scroll.addView(body);
         contentFrame.addView(scroll);
-        buildBottomNavigation();
         if (latestTelemetry != null) {
             renderTelemetry(latestTelemetry, new Date());
         }
@@ -1234,76 +1253,71 @@ public class MainActivity extends Activity {
     }
 
     private void renderControls() {
-        setDashboardTheme(false);
+        prepareThemedPage();
         showingControls = true;
         showingHistory = false;
         showingUsers = false;
         contentFrame.removeAllViews();
-        toolbarSubtitle.setText(connectedHost + " · Управление");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = pageBody();
 
-        LinearLayout notice = card(Color.rgb(255, 247, 230), 18);
-        notice.setBackground(roundRect(Color.rgb(255, 247, 230), 18,
-                Color.rgb(240, 222, 181), 1));
-        notice.addView(text("Команды пока недоступны", 17, TEXT, true));
+        LinearLayout notice = card(ELECTRIC_SURFACE_TOP, 18);
+        notice.setBackground(electricCardBackground());
+        notice.addView(text("Команды пока недоступны", 17, ELECTRIC_TEXT, true));
         addTopMargin(notice, text(
                 "Встроенный веб-сервер UPSMON PRO предоставляет только показания. В найденной странице есть опрос GET /ups.txt, но нет команд для управления ИБП.",
-                13, SECONDARY, false), 6);
+                13, ELECTRIC_MUTED, false), 6);
         body.addView(notice);
 
-        TextView actionsTitle = text("Функции UPSMON PRO", 17, TEXT, true);
+        TextView actionsTitle = text("Функции UPSMON PRO", 17, ELECTRIC_TEXT, true);
         addTopMargin(body, actionsTitle, 18);
         body.addView(controlCard("Тест батареи", "10-секундный тест", "Нет API-команды"));
         addTopMargin(body, controlCard("Звуковой сигнал", "Вкл. / выкл.", "Нет API-команды"), 10);
         addTopMargin(body, controlCard("Green Mode", "Режим энергосбережения", "Нет API-команды"), 10);
         addTopMargin(body, controlCard("Ручной bypass", "Если поддерживается моделью", "Нет API-команды"), 10);
 
-        Button details = button("Что нужно для активации?", NAVY);
+        Button details = button("Что нужно для активации?", ELECTRIC_BLUE);
         details.setOnClickListener(view -> showControlRequirements());
         addTopMargin(body, details, 16);
 
         TextView liveInfo = text(
                 "Мониторинг продолжает обновляться, пока открыта вкладка управления.",
-                12, SECONDARY, false);
+                12, ELECTRIC_MUTED, false);
         addTopMargin(body, liveInfo, 12);
 
         scroll.addView(body);
         contentFrame.addView(scroll);
-        buildBottomNavigation();
     }
 
     private void renderHistory() {
-        setDashboardTheme(false);
+        prepareThemedPage();
         showingControls = false;
         showingHistory = true;
         showingUsers = false;
         contentFrame.removeAllViews();
-        toolbarSubtitle.setText(connectedHost + " · История");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = pageBody();
-        LinearLayout card = card(Color.WHITE, 20);
-        card.setBackground(roundRect(Color.WHITE, 20, Color.rgb(225, 232, 240), 1));
-        card.addView(text("История событий UPSMON PRO", 18, TEXT, true));
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 20);
+        card.setBackground(electricCardBackground());
+        card.addView(text("История событий UPSMON PRO", 18, ELECTRIC_TEXT, true));
 
-        historyStatus = text("Загрузка журнала…", 13, SECONDARY, false);
+        historyStatus = text("Загрузка журнала…", 13, ELECTRIC_MUTED, false);
         addTopMargin(card, historyStatus, 8);
 
-        historyContent = text("", 14, TEXT, false);
+        historyContent = text("", 14, ELECTRIC_TEXT, false);
         historyContent.setLineSpacing(dp(3), 1f);
         addTopMargin(card, historyContent, 12);
         body.addView(card);
 
         TextView help = text(
                 "Журнал читается напрямую из EventRecord.CSV. На компьютере должен работать read-only сервер из README.",
-                12, SECONDARY, false);
+                12, ELECTRIC_MUTED, false);
         addTopMargin(body, help, 10);
 
         scroll.addView(body);
         contentFrame.addView(scroll);
-        buildBottomNavigation();
         fetchHistoryOnce();
     }
 
@@ -1313,22 +1327,21 @@ public class MainActivity extends Activity {
             return;
         }
 
-        setDashboardTheme(false);
+        prepareThemedPage();
         showingControls = false;
         showingHistory = false;
         showingUsers = true;
         contentFrame.removeAllViews();
-        toolbarSubtitle.setText("Профиль администратора · Пользователи");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = pageBody();
-        LinearLayout card = card(Color.WHITE, 20);
-        card.setBackground(roundRect(Color.WHITE, 20, Color.rgb(225, 232, 240), 1));
-        card.addView(text("Пользователи приложения", 18, TEXT, true));
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 20);
+        card.setBackground(electricCardBackground());
+        card.addView(text("Пользователи приложения", 18, ELECTRIC_TEXT, true));
         addTopMargin(card, text("Вход в мониторинг и историю UPSMON PRO",
-                13, SECONDARY, false), 4);
+                13, ELECTRIC_MUTED, false), 4);
         addTopMargin(card, text("Вы вошли как " + currentUsername,
-                12, BLUE, true), 8);
+                12, ELECTRIC_BLUE, true), 8);
 
         LinearLayout accounts = new LinearLayout(this);
         accounts.setOrientation(LinearLayout.VERTICAL);
@@ -1336,18 +1349,17 @@ public class MainActivity extends Activity {
         refreshUserList(accounts);
         body.addView(card);
 
-        Button createUser = button("Создать пользователя", BLUE);
+        Button createUser = button("Создать пользователя", ELECTRIC_BLUE);
         createUser.setOnClickListener(view -> showCreateUserDialog());
         addTopMargin(body, createUser, 14);
 
         TextView note = text(
                 "Только администратор может создавать учётные записи. Сервер хранит пароли только в виде индивидуальных хешей.",
-                12, SECONDARY, false);
+                12, ELECTRIC_MUTED, false);
         addTopMargin(body, note, 10);
 
         scroll.addView(body);
         contentFrame.addView(scroll);
-        buildBottomNavigation();
     }
 
     private void refreshUserList(LinearLayout accounts) {
@@ -1408,9 +1420,9 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(dp(12), dp(10), dp(12), dp(10));
-        row.setBackground(roundRect(BACKGROUND, 12, Color.rgb(225, 232, 240), 1));
+        row.setBackground(roundRect(ELECTRIC_SURFACE_BOTTOM, 12, ELECTRIC_OUTLINE, 1));
 
-        TextView accountName = text(username, 14, TEXT, true);
+        TextView accountName = text(username, 14, ELECTRIC_TEXT, true);
         row.addView(accountName);
         return row;
     }
@@ -1686,52 +1698,59 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout controlCard(String title, String subtitle, String availability) {
-        LinearLayout card = card(Color.WHITE, 17);
-        card.setBackground(roundRect(Color.WHITE, 17, Color.rgb(225, 232, 240), 1));
-        card.addView(text(title, 16, TEXT, true));
-        addTopMargin(card, text(subtitle, 13, SECONDARY, false), 4);
-        Button unavailable = button(availability, Color.rgb(226, 232, 239));
-        unavailable.setTextColor(SECONDARY);
+        LinearLayout card = card(ELECTRIC_SURFACE_TOP, 17);
+        card.setBackground(electricCardBackground());
+        card.addView(text(title, 16, ELECTRIC_TEXT, true));
+        addTopMargin(card, text(subtitle, 13, ELECTRIC_MUTED, false), 4);
+        Button unavailable = button(availability, ELECTRIC_SURFACE_BOTTOM);
+        unavailable.setTextColor(ELECTRIC_MUTED);
         unavailable.setEnabled(false);
         addTopMargin(card, unavailable, 9);
         return card;
     }
 
-    private void buildBottomNavigation() {
-        bottomNavigation.removeAllViews();
-        bottomNavigation.setVisibility(View.VISIBLE);
-
-        int activeColor = dashboardTheme ? ELECTRIC_BLUE : BLUE;
-        int inactiveColor = dashboardTheme ? ELECTRIC_SURFACE_TOP
-                : Color.rgb(225, 232, 239);
-        int inactiveTextColor = dashboardTheme ? ELECTRIC_MUTED : TEXT;
-        Button monitor = button("Мониторинг",
-                !showingControls && !showingHistory && !showingUsers
-                        ? activeColor : inactiveColor);
-        monitor.setTextColor(!showingControls && !showingHistory && !showingUsers
-                ? Color.WHITE : inactiveTextColor);
-        monitor.setOnClickListener(view -> renderMonitor());
-
-        Button history = button("История", showingHistory ? activeColor : inactiveColor);
-        history.setTextColor(showingHistory ? Color.WHITE : inactiveTextColor);
-        history.setOnClickListener(view -> renderHistory());
-
-        Button controls = button("Управление",
-                showingControls ? activeColor : inactiveColor);
-        controls.setTextColor(showingControls ? Color.WHITE : inactiveTextColor);
-        controls.setOnClickListener(view -> renderControls());
-
-        int margin = isAdminUser ? 2 : 3;
-        bottomNavigation.addView(monitor, weightedParams(1, margin));
-        bottomNavigation.addView(history, weightedParams(1, margin));
-        bottomNavigation.addView(controls, weightedParams(1, margin));
-        if (isAdminUser) {
-            Button users = button("Пользователи",
-                    showingUsers ? activeColor : inactiveColor);
-            users.setTextColor(showingUsers ? Color.WHITE : inactiveTextColor);
-            users.setOnClickListener(view -> renderUsers());
-            bottomNavigation.addView(users, weightedParams(1, 2));
+    private void showNavigationMenu(View anchor) {
+        if (!isAuthenticated) {
+            return;
         }
+
+        PopupMenu popup = new PopupMenu(this, anchor);
+        Menu menu = popup.getMenu();
+        menu.setGroupCheckable(NAVIGATION_GROUP, true, true);
+        menu.add(NAVIGATION_GROUP, NAVIGATION_MONITOR, 0, "Мониторинг")
+                .setCheckable(true)
+                .setChecked(!showingControls && !showingHistory && !showingUsers);
+        menu.add(NAVIGATION_GROUP, NAVIGATION_HISTORY, 1, "История")
+                .setCheckable(true)
+                .setChecked(showingHistory);
+        menu.add(NAVIGATION_GROUP, NAVIGATION_CONTROLS, 2, "Управление")
+                .setCheckable(true)
+                .setChecked(showingControls);
+        if (isAdminUser) {
+            menu.add(NAVIGATION_GROUP, NAVIGATION_USERS, 3, "Пользователи")
+                    .setCheckable(true)
+                    .setChecked(showingUsers);
+        }
+
+        popup.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case NAVIGATION_MONITOR:
+                    renderMonitor();
+                    return true;
+                case NAVIGATION_HISTORY:
+                    renderHistory();
+                    return true;
+                case NAVIGATION_CONTROLS:
+                    renderControls();
+                    return true;
+                case NAVIGATION_USERS:
+                    renderUsers();
+                    return true;
+                default:
+                    return false;
+            }
+        });
+        popup.show();
     }
 
     private void renderTelemetry(UpsTelemetry telemetry, Date receivedAt) {
@@ -2128,6 +2147,17 @@ public class MainActivity extends Activity {
         button.setMinHeight(dp(42));
         button.setPadding(dp(12), 0, dp(12), 0);
         button.setBackgroundTintList(ColorStateList.valueOf(color));
+        return button;
+    }
+
+    private ImageButton toolbarIconButton(int iconResource, String description, int color) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconResource);
+        button.setContentDescription(description);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(10), dp(10), dp(10), dp(10));
+        button.setBackground(roundRect(color, 12, color, 0));
+        button.setImageTintList(ColorStateList.valueOf(ELECTRIC_TEXT));
         return button;
     }
 
